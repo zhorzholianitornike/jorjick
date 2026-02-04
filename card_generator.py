@@ -1,33 +1,28 @@
 #!/usr/bin/env python3
 """
-News-card generator — BBC / CNN / FOX-style lower-third graphics.
+News-card generator — portrait 1080×1350.
+Design translated directly from the HTML/CSS reference template.
 
-Layout (matches the Georgian-news reference):
+Layout:
 
     ┌─────────────────────────────────────┐
+    │                          [logo]     │
     │                                     │
     │          person photo               │
     │                                     │
-    │  ░░░ dark gradient starts here ░░░  │
+    │  ░░░ gradient (60 % … 0 %) ░░░░░░░  │
     │                                     │
-    │  NAME IN LARGE WHITE TEXT           │
-    │  ════  ← accent bar                 │
-    │  Smaller description / quote text   │
-    │  that can wrap to several lines.    │
-    └─────────────────────────────────────┘
+    │  ● Name                             │  54 px bold, red dot prefix
+    │  „                                  │  96 px opening mark
+    │    Quote text …                     │  30 px, indented 42 px
+    │    … wraps here.                    │
+    │                            "        │  96 px closing mark, right
+    └█████████████████████████████████████┘  18 px red bottom bar
 
 Usage:
     from card_generator import CardGenerator
-
-    gen = CardGenerator()                       # no logo
-    gen = CardGenerator(logo_path="logo.png")   # with logo
-
-    output = gen.generate(
-        photo_path="photo.jpg",
-        name="ირაკლი კობახიძე",
-        text=" października ტქ ადი ...",
-        output_path="card.jpg",
-    )
+    gen = CardGenerator(logo_path="logo.png")   # logo optional
+    gen.generate("photo.jpg", "Name", "Quote text …", "out.jpg")
 """
 
 import os
@@ -37,38 +32,60 @@ from typing import Optional
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------------------------
-# DESIGN TOKENS  ← change these to tweak the look
+# CARD SIZE
 # ---------------------------------------------------------------------------
-OVERLAY_RATIO     = 0.55          # bottom 55 % of the image gets the gradient
-OVERLAY_MAX_ALPHA = 180           # darkest pixel at the very bottom  (0-255)
+CARD_W  = 1080
+CARD_H  = 1350
 
-NAME_FONT_SIZE    = 54
-TEXT_FONT_SIZE    = 26
-TEXT_COLOR        = (255, 255, 255)   # white
+# ---------------------------------------------------------------------------
+# COLOURS  (match the CSS variables)
+# ---------------------------------------------------------------------------
+ACCENT_RED  = (229, 57, 53)          # --accent-red  #E53935
+WHITE       = (255, 255, 255)
+MARK_WHITE  = (255, 255, 255, 217)   # rgba(255,255,255,0.85)  for „ "
+SHADOW      = (0, 0, 0, 128)        # text-shadow approximation
 
-PADDING_LEFT      = 55            # left margin
-PADDING_BOTTOM    = 52            # distance from the bottom edge
+# ---------------------------------------------------------------------------
+# NAME ROW
+# ---------------------------------------------------------------------------
+NAME_SIZE   = 54                     # font-size: 54px
+DOT_W       = 10                     # .name::before  width/height
+DOT_GAP     = 16                     # margin-right on the dot
 
-NAME_TO_ACCENT    = 10            # gap  name  →  accent bar
-ACCENT_TO_TEXT    = 14            # gap  accent bar  →  first text line
-LINE_HEIGHT       = TEXT_FONT_SIZE + 6
+# ---------------------------------------------------------------------------
+# QUOTE BLOCK
+# ---------------------------------------------------------------------------
+QUOTE_SIZE  = 30                     # font-size: 30px
+QUOTE_LH    = int(QUOTE_SIZE * 1.5)  # line-height: 1.5
+QUOTE_INDENT= 42                     # padding-left: 42px
+MARK_SIZE   = 96                     # font-size of „ and "
+MARK_TOP    = -12                    # top: -12px on opening mark
+MARK_GAP    = 16                     # margin-top on closing mark
+QUOTE_BLOCK_MAX = 900                # max-width: 900px
 
-ACCENT_COLOR      = (175, 30, 40)    # dark red
-ACCENT_H          = 4                # bar height
-ACCENT_W          = 280              # bar width
+# ---------------------------------------------------------------------------
+# LAYOUT
+# ---------------------------------------------------------------------------
+PAD_L       = 80                     # content padding-left
+PAD_R       = 80                     # content padding-right
+PAD_BOT     = 90                     # content padding-bottom
+NAME_GAP    = 24                     # .name margin-bottom
 
-PREFIX_COLOR      = (175, 30, 40)    # dark red square before name
-PREFIX_SIZE       = 22               # square side length
-PREFIX_GAP        = 16               # gap between square and name text
+# ---------------------------------------------------------------------------
+# BOTTOM BAR
+# ---------------------------------------------------------------------------
+BAR_H       = 18                     # .bottom-accent height
 
-MAX_SIDE          = 1080             # long side of the output image
+# ---------------------------------------------------------------------------
+# LOGO
+# ---------------------------------------------------------------------------
+LOGO_PAD    = 40                     # .logo padding
+LOGO_W      = 90                     # .logo img width
 
 # ---------------------------------------------------------------------------
 # Font helpers
 # ---------------------------------------------------------------------------
-_FONT_PATH = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
-
-# Fallback system fonts (macOS / Linux)
+_FONT_PATH        = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
 _SYSTEM_FALLBACKS = [
     "/Library/Fonts/Arial.ttf",
     "/System/Library/Fonts/Helvetica.ttc",
@@ -77,12 +94,9 @@ _SYSTEM_FALLBACKS = [
 
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont:
-    """Return a FreeTypeFont.  Downloads Georgian font on first run if missing."""
-    # 1) preferred: Noto Sans Georgian (downloaded by setup_fonts.py)
+    """Load font — auto-downloads Georgian font on first use if missing."""
     if _FONT_PATH.exists():
         return ImageFont.truetype(str(_FONT_PATH), size)
-
-    # 2) try to auto-download
     try:
         from setup_fonts import download
         download()
@@ -90,13 +104,9 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont:
             return ImageFont.truetype(str(_FONT_PATH), size)
     except Exception:
         pass
-
-    # 3) system fallbacks
     for p in _SYSTEM_FALLBACKS:
         if os.path.exists(p):
             return ImageFont.truetype(p, size)
-
-    # 4) PIL default (no Georgian glyphs, but won't crash)
     return ImageFont.load_default()
 
 
@@ -104,7 +114,7 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont:
 # CardGenerator
 # ---------------------------------------------------------------------------
 class CardGenerator:
-    """Overlay a lower-third news graphic onto a photo."""
+    """Generate a 1080×1350 portrait news card."""
 
     def __init__(self, logo_path: Optional[str] = None):
         self.logo_path = logo_path
@@ -112,128 +122,149 @@ class CardGenerator:
     # ── public ─────────────────────────────────────────────────────────────
     def generate(
         self,
-        photo_path: str,
-        name: str,
-        text: str,
+        photo_path:  str,
+        name:        str,
+        text:        str,
         output_path: str = "card_output.jpg",
     ) -> str:
-        """
-        Create a news card and write it to *output_path*.
-
-        Args:
-            photo_path:  source photo (JPEG / PNG)
-            name:        person's name (large text)
-            text:        description / quote (smaller text, auto-wraps)
-            output_path: where to save the result
-
-        Returns:
-            output_path
-        """
-        img = self._open(photo_path)
+        """Generate card → save as JPEG → return output_path."""
+        img = self._cover(photo_path)
         img = self._gradient(img)
-        self._lower_third(img, name, text)
+        self._content(img, name, text)
+        self._bottom_bar(img)
         if self.logo_path and os.path.exists(self.logo_path):
             self._logo(img)
-
         img.convert("RGB").save(output_path, "JPEG", quality=95)
         return output_path
 
-    # ── private ────────────────────────────────────────────────────────────
+    # ── photo: background-size: cover ──────────────────────────────────────
     @staticmethod
-    def _open(path: str) -> Image.Image:
-        """Open image, resize so the long side ≤ MAX_SIDE, return RGBA."""
-        img = Image.open(path).convert("RGBA")
-        if max(img.size) > MAX_SIDE:
-            ratio = MAX_SIDE / max(img.size)
-            img = img.resize(
-                (int(img.size[0] * ratio), int(img.size[1] * ratio)),
-                Image.LANCZOS,
-            )
-        return img
+    def _cover(path: str) -> Image.Image:
+        """Resize + centre-crop to CARD_W × CARD_H."""
+        img   = Image.open(path).convert("RGBA")
+        ratio = max(CARD_W / img.width, CARD_H / img.height)
+        nw, nh = int(img.width * ratio), int(img.height * ratio)
+        img   = img.resize((nw, nh), Image.LANCZOS)
+        left  = (nw - CARD_W) // 2
+        top   = (nh - CARD_H) // 2
+        return img.crop((left, top, left + CARD_W, top + CARD_H))
 
+    # ── gradient ───────────────────────────────────────────────────────────
     @staticmethod
     def _gradient(img: Image.Image) -> Image.Image:
-        """Semi-transparent dark gradient over the bottom portion."""
-        w, h     = img.size
-        overlay  = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw     = ImageDraw.Draw(overlay)
-        start_y  = int(h * (1 - OVERLAY_RATIO))
-        span     = h - start_y
+        """
+        Matches the CSS exactly:
+            linear-gradient(to top,
+                rgba(0,0,0,0.85)  0 %,   → bottom
+                rgba(0,0,0,0.55) 25 %,
+                rgba(0,0,0,0.0 ) 60 %)   → transparent
+        """
+        w, h  = img.size
+        ov    = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw  = ImageDraw.Draw(ov)
 
-        for y in range(start_y, h):
-            alpha = int(OVERLAY_MAX_ALPHA * ((y - start_y) / span))
+        y60   = h - int(h * 0.60)       # y where gradient becomes 0
+        y25   = h - int(h * 0.25)       # y at the 0.55 keyframe
+
+        for y in range(y60, h):
+            if y < y25:                  # 60 %…25 %  →  alpha 0…140
+                t     = (y - y60) / max(y25 - y60, 1)
+                alpha = int(140 * t)
+            else:                        # 25 %…0 %   →  alpha 140…217
+                t     = (y - y25) / max(h - y25, 1)
+                alpha = int(140 + 77 * t)
             draw.rectangle([0, y, w, y + 1], fill=(0, 0, 0, alpha))
 
-        return Image.alpha_composite(img, overlay)
+        return Image.alpha_composite(img, ov)
 
-    # ── text layout ────────────────────────────────────────────────────────
+    # ── text helpers ───────────────────────────────────────────────────────
+    @staticmethod
+    def _shadow(draw, pos, text, font, color=WHITE):
+        """Draw text with a simple drop-shadow (approx text-shadow: 0 2px 4px)."""
+        draw.text((pos[0] + 1, pos[1] + 2), text, fill=SHADOW, font=font)
+        draw.text(pos,                       text, fill=color,  font=font)
+
     @staticmethod
     def _wrap(text: str, max_px: int, font: ImageFont.FreeTypeFont) -> list[str]:
-        """Word-wrap *text* so each line fits within *max_px* pixels."""
-        words  = text.split()
-        lines  = []
-        line   = ""
-        for word in words:
-            candidate = f"{line} {word}".strip()
+        """Word-wrap so every line fits within max_px."""
+        words, lines, cur = text.split(), [], ""
+        for w in words:
+            candidate = f"{cur} {w}".strip()
             if font.getbbox(candidate)[2] <= max_px:
-                line = candidate
+                cur = candidate
             else:
-                if line:
-                    lines.append(line)
-                line = word
-        if line:
-            lines.append(line)
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
         return lines
 
-    def _lower_third(self, img: Image.Image, name: str, text: str):
-        """Draw prefix square + name + accent bar + description."""
-        w, h  = img.size
-        draw  = ImageDraw.Draw(img)
+    # ── content: name row + quote block ────────────────────────────────────
+    def _content(self, img: Image.Image, name: str, text: str):
+        w, h      = img.size
+        draw      = ImageDraw.Draw(img)
 
-        name_font = _get_font(NAME_FONT_SIZE)
-        text_font = _get_font(TEXT_FONT_SIZE)
+        name_font  = _get_font(NAME_SIZE)
+        quote_font = _get_font(QUOTE_SIZE)
+        mark_font  = _get_font(MARK_SIZE)
 
-        # x where name/text starts (after the prefix square)
-        text_x = PADDING_LEFT + PREFIX_SIZE + PREFIX_GAP
+        # ── wrap quote lines ──
+        max_q_w   = min(QUOTE_BLOCK_MAX, w - PAD_L - PAD_R) - QUOTE_INDENT
+        lines     = self._wrap(text, max_q_w, quote_font)
 
-        # ── measure ──
-        max_text_w  = w - text_x - PADDING_LEFT
-        desc_lines  = self._wrap(text, max_text_w, text_font)
+        # ── measure heights ──
+        name_h    = name_font.getbbox(name)[3] - name_font.getbbox(name)[1]
+        close_bb  = mark_font.getbbox("\u201C")
+        close_h   = close_bb[3] - close_bb[1]
+        close_w   = close_bb[2] - close_bb[0]
 
-        name_bbox   = name_font.getbbox(name)
-        name_h      = name_bbox[3] - name_bbox[1]
-
-        desc_block_h = len(desc_lines) * LINE_HEIGHT
-        total_h      = name_h + NAME_TO_ACCENT + ACCENT_H + ACCENT_TO_TEXT + desc_block_h
-
-        # ── positions (anchored to bottom-left) ──
-        y = h - PADDING_BOTTOM - total_h
-
-        # prefix square (vertically centred on the name line)
-        sq_y = y + (name_h - PREFIX_SIZE) // 2
-        draw.rectangle(
-            [PADDING_LEFT, sq_y, PADDING_LEFT + PREFIX_SIZE, sq_y + PREFIX_SIZE],
-            fill=PREFIX_COLOR,
+        total_h   = (
+            name_h
+            + NAME_GAP
+            + len(lines) * QUOTE_LH
+            + MARK_GAP
+            + close_h
         )
 
-        # name
-        draw.text((text_x, y), name, fill=TEXT_COLOR, font=name_font)
-        y += name_h + NAME_TO_ACCENT
+        # ── anchor to bottom ──
+        y = h - PAD_BOT - BAR_H - total_h
 
-        # accent bar (starts at text_x)
+        # ── NAME: [red dot] [name text] ──
+        dot_y = y + (name_h - DOT_W) // 2
         draw.rectangle(
-            [text_x, y, text_x + ACCENT_W, y + ACCENT_H],
-            fill=ACCENT_COLOR,
+            [PAD_L, dot_y, PAD_L + DOT_W, dot_y + DOT_W],
+            fill=ACCENT_RED,
         )
-        y += ACCENT_H + ACCENT_TO_TEXT
+        self._shadow(draw, (PAD_L + DOT_W + DOT_GAP, y), name, name_font)
+        y += name_h + NAME_GAP
 
-        # description lines
-        for line in desc_lines:
-            draw.text((text_x, y), line, fill=TEXT_COLOR, font=text_font)
-            y += LINE_HEIGHT
+        # ── QUOTE ──
+        block_x = PAD_L                     # left edge of quote block
+        text_x  = block_x + QUOTE_INDENT   # indented text start
 
+        # opening „  — top: -12 px relative to the quote block
+        self._shadow(draw, (block_x, y + MARK_TOP), "\u201E", mark_font, color=MARK_WHITE)
+
+        # wrapped quote lines
+        for line in lines:
+            self._shadow(draw, (text_x, y), line, quote_font)
+            y += QUOTE_LH
+
+        # closing "  — right-aligned within QUOTE_BLOCK_MAX, margin-top 16
+        y += MARK_GAP
+        right_edge = min(block_x + QUOTE_BLOCK_MAX, w - PAD_R)
+        self._shadow(draw, (right_edge - close_w, y), "\u201C", mark_font, color=MARK_WHITE)
+
+    # ── full-width red bottom bar ──────────────────────────────────────────
+    @staticmethod
+    def _bottom_bar(img: Image.Image):
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+        draw.rectangle([0, h - BAR_H, w, h], fill=ACCENT_RED)
+
+    # ── logo (top-right) ───────────────────────────────────────────────────
     def _logo(self, img: Image.Image):
-        """Paste logo in the top-right corner."""
         logo = Image.open(self.logo_path).convert("RGBA")
-        logo.thumbnail((100, 100), Image.LANCZOS)
-        img.paste(logo, (img.width - logo.width - 25, 25), logo)
+        logo.thumbnail((LOGO_W, LOGO_W * 2), Image.LANCZOS)
+        img.paste(logo, (img.width - logo.width - LOGO_PAD, LOGO_PAD), logo)
