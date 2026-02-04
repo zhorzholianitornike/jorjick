@@ -28,6 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from card_generator import CardGenerator
+from facebook import post_photo
 from setup_fonts import download as ensure_font
 
 # ---------------------------------------------------------------------------
@@ -310,6 +311,9 @@ async def api_generate(
 
     photo_path.unlink(missing_ok=True)          # source no longer needed
 
+    # upload to Facebook Page in background (non-blocking)
+    asyncio.create_task(asyncio.to_thread(post_photo, str(card_path), name))
+
     _add_history(name, f"/cards/{card_id}_card.jpg")
     return {"card_url": f"/cards/{card_id}_card.jpg"}
 
@@ -391,6 +395,7 @@ async def _run_telegram():
             with open(out, "rb") as fh:
                 await update.message.reply_photo(photo=fh)
             _add_history(name, f"/cards/{cid}_card.jpg")
+            asyncio.create_task(asyncio.to_thread(post_photo, str(out), name))
         except Exception as exc:
             await update.message.reply_text(f"Error: {exc}")
 
