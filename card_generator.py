@@ -39,23 +39,27 @@ from PIL import Image, ImageDraw, ImageFont
 # ---------------------------------------------------------------------------
 # DESIGN TOKENS  ← change these to tweak the look
 # ---------------------------------------------------------------------------
-OVERLAY_RATIO     = 0.44          # bottom 44 % of the image gets the gradient
-OVERLAY_MAX_ALPHA = 160           # darkest pixel at the very bottom  (0-255)
+OVERLAY_RATIO     = 0.55          # bottom 55 % of the image gets the gradient
+OVERLAY_MAX_ALPHA = 180           # darkest pixel at the very bottom  (0-255)
 
 NAME_FONT_SIZE    = 54
-TEXT_FONT_SIZE    = 22
+TEXT_FONT_SIZE    = 26
 TEXT_COLOR        = (255, 255, 255)   # white
 
-PADDING_LEFT      = 58            # left margin
+PADDING_LEFT      = 55            # left margin
 PADDING_BOTTOM    = 52            # distance from the bottom edge
 
 NAME_TO_ACCENT    = 10            # gap  name  →  accent bar
 ACCENT_TO_TEXT    = 14            # gap  accent bar  →  first text line
 LINE_HEIGHT       = TEXT_FONT_SIZE + 6
 
-ACCENT_COLOR      = (30, 148, 185)   # teal
+ACCENT_COLOR      = (175, 30, 40)    # dark red
 ACCENT_H          = 4                # bar height
-ACCENT_W          = 130              # bar width
+ACCENT_W          = 280              # bar width
+
+PREFIX_COLOR      = (175, 30, 40)    # dark red square before name
+PREFIX_SIZE       = 22               # square side length
+PREFIX_GAP        = 16               # gap between square and name text
 
 MAX_SIDE          = 1080             # long side of the output image
 
@@ -182,15 +186,18 @@ class CardGenerator:
         return lines
 
     def _lower_third(self, img: Image.Image, name: str, text: str):
-        """Draw name + accent bar + description onto *img* in-place."""
+        """Draw prefix square + name + accent bar + description."""
         w, h  = img.size
         draw  = ImageDraw.Draw(img)
 
         name_font = _get_font(NAME_FONT_SIZE)
         text_font = _get_font(TEXT_FONT_SIZE)
 
+        # x where name/text starts (after the prefix square)
+        text_x = PADDING_LEFT + PREFIX_SIZE + PREFIX_GAP
+
         # ── measure ──
-        max_text_w  = w - PADDING_LEFT * 2
+        max_text_w  = w - text_x - PADDING_LEFT
         desc_lines  = self._wrap(text, max_text_w, text_font)
 
         name_bbox   = name_font.getbbox(name)
@@ -202,20 +209,27 @@ class CardGenerator:
         # ── positions (anchored to bottom-left) ──
         y = h - PADDING_BOTTOM - total_h
 
+        # prefix square (vertically centred on the name line)
+        sq_y = y + (name_h - PREFIX_SIZE) // 2
+        draw.rectangle(
+            [PADDING_LEFT, sq_y, PADDING_LEFT + PREFIX_SIZE, sq_y + PREFIX_SIZE],
+            fill=PREFIX_COLOR,
+        )
+
         # name
-        draw.text((PADDING_LEFT, y), name, fill=TEXT_COLOR, font=name_font)
+        draw.text((text_x, y), name, fill=TEXT_COLOR, font=name_font)
         y += name_h + NAME_TO_ACCENT
 
-        # accent bar
+        # accent bar (starts at text_x)
         draw.rectangle(
-            [PADDING_LEFT, y, PADDING_LEFT + ACCENT_W, y + ACCENT_H],
+            [text_x, y, text_x + ACCENT_W, y + ACCENT_H],
             fill=ACCENT_COLOR,
         )
         y += ACCENT_H + ACCENT_TO_TEXT
 
         # description lines
         for line in desc_lines:
-            draw.text((PADDING_LEFT, y), line, fill=TEXT_COLOR, font=text_font)
+            draw.text((text_x, y), line, fill=TEXT_COLOR, font=text_font)
             y += LINE_HEIGHT
 
     def _logo(self, img: Image.Image):
