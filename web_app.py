@@ -19,7 +19,7 @@ Env vars (set in Railway dashboard):
 import asyncio
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import requests
@@ -38,6 +38,8 @@ from setup_fonts import download as ensure_font
 PORT              = int(os.environ.get("PORT", 8000))
 TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")   # chat_id to receive FB upload status
+
+TBILISI = timezone(timedelta(hours=4))   # Asia/Tbilisi — UTC+4, no DST
 
 UPLOADS = Path("uploads")
 CARDS   = Path("cards")
@@ -350,11 +352,12 @@ def _send_telegram(text: str):
 
 def _upload_and_notify(card_path: str, name: str):
     """Upload to Facebook, then notify via Telegram. Meant to run in a thread."""
+    now     = datetime.now(TBILISI).strftime("%H:%M  %d/%m/%Y")
     success = post_photo(card_path, name)
     if success:
-        _send_telegram(f"Facebook upload done\nName: {name}")
+        _send_telegram(f"ქარდი ატვირთულია\nქარდის სახელი: {name}\n{now}")
     else:
-        _send_telegram(f"Facebook upload FAILED\nName: {name}")
+        _send_telegram(f"ქარდი ატვირთვა ჩამიდა\nქარდის სახელი: {name}\n{now}")
 
 
 # ---------------------------------------------------------------------------
