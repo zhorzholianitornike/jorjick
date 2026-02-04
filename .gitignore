@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+
+# runtime dirs (created automatically)
+temp/
+uploads/
+cards/
+fonts/
