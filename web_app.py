@@ -22,6 +22,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import requests
 import uvicorn
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -34,8 +35,9 @@ from setup_fonts import download as ensure_font
 # ---------------------------------------------------------------------------
 # Paths & config
 # ---------------------------------------------------------------------------
-PORT           = int(os.environ.get("PORT", 8000))
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+PORT              = int(os.environ.get("PORT", 8000))
+TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")   # chat_id to receive FB upload status
 
 UPLOADS = Path("uploads")
 CARDS   = Path("cards")
@@ -311,8 +313,8 @@ async def api_generate(
 
     photo_path.unlink(missing_ok=True)          # source no longer needed
 
-    # upload to Facebook Page in background (non-blocking)
-    asyncio.create_task(asyncio.to_thread(post_photo, str(card_path), name))
+    # upload to Facebook + notify via Telegram in background
+    asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
 
     _add_history(name, f"/cards/{card_id}_card.jpg")
     return {"card_url": f"/cards/{card_id}_card.jpg"}
@@ -327,6 +329,32 @@ async def api_history():
 async def api_status():
     return {"telegram": "running" if TELEGRAM_TOKEN else "disabled",
             "cards": len(history)}
+
+
+# ---------------------------------------------------------------------------
+# Facebook upload + Telegram notification
+# ---------------------------------------------------------------------------
+def _send_telegram(text: str):
+    """Send a message to TELEGRAM_ADMIN_ID via Bot API (blocking, run in thread)."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_ADMIN_ID, "text": text},
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"[TG] Notification failed: {exc}")
+
+
+def _upload_and_notify(card_path: str, name: str):
+    """Upload to Facebook, then notify via Telegram. Meant to run in a thread."""
+    success = post_photo(card_path, name)
+    if success:
+        _send_telegram(f"Facebook upload done\nName: {name}")
+    else:
+        _send_telegram(f"Facebook upload FAILED\nName: {name}")
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +423,7 @@ async def _run_telegram():
             with open(out, "rb") as fh:
                 await update.message.reply_photo(photo=fh)
             _add_history(name, f"/cards/{cid}_card.jpg")
-            asyncio.create_task(asyncio.to_thread(post_photo, str(out), name))
+            asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(out), name))
         except Exception as exc:
             await update.message.reply_text(f"Error: {exc}")
 
