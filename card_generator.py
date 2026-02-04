@@ -45,6 +45,9 @@ WHITE       = (255, 255, 255)
 MARK_WHITE  = (255, 255, 255, 217)   # rgba(255,255,255,0.85)  for „ "
 SHADOW      = (0, 0, 0, 128)        # text-shadow approximation
 
+BLUE_OVERLAY = (20, 50, 110, 100)    # semi-transparent blue
+BLUE_COVER_H = 0.70                  # covers top 70 % of the card
+
 # ---------------------------------------------------------------------------
 # NAME ROW
 # ---------------------------------------------------------------------------
@@ -130,7 +133,8 @@ class CardGenerator:
         """Generate card → save as JPEG → return output_path."""
         img = self._cover(photo_path)
         img = self._gradient(img)
-        self._content(img, name, text)
+        img = self._blue_overlay(img)
+        self._content(img, name.upper(), text.upper())
         self._bottom_bar(img)
         if self.logo_path and os.path.exists(self.logo_path):
             self._logo(img)
@@ -175,6 +179,16 @@ class CardGenerator:
                 alpha = int(140 + 77 * t)
             draw.rectangle([0, y, w, y + 1], fill=(0, 0, 0, alpha))
 
+        return Image.alpha_composite(img, ov)
+
+    # ── blue overlay (top 70 %) ────────────────────────────────────────────
+    @staticmethod
+    def _blue_overlay(img: Image.Image) -> Image.Image:
+        """Semi-transparent blue rectangle over the top 70 % of the card."""
+        w, h  = img.size
+        ov    = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw  = ImageDraw.Draw(ov)
+        draw.rectangle([0, 0, w, int(h * BLUE_COVER_H)], fill=BLUE_OVERLAY)
         return Image.alpha_composite(img, ov)
 
     # ── text helpers ───────────────────────────────────────────────────────
