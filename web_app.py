@@ -209,7 +209,7 @@ DASHBOARD = """<!DOCTYPE html>
       <br>
       <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ ჩამტვირთი</a>
     </div>
-    <div id="auto-log" style="margin-top:14px;font-size:12px;color:#94a3b8;white-space:pre-wrap;line-height:1.8;max-height:140px;overflow-y:auto"></div>
+    <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
   </div>
 
   <!-- history -->
@@ -227,6 +227,7 @@ DASHBOARD = """<!DOCTYPE html>
   const fi     = document.getElementById('fi');
   const prev   = document.getElementById('prev');
   let   file   = null;
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ── upload wiring ─────────────────────────────────────────────────
   drop.addEventListener('click',    () => fi.click());
@@ -289,7 +290,7 @@ DASHBOARD = """<!DOCTYPE html>
     btn.textContent  = 'დამდი…';
     spin.style.display  = 'block';
     resEl.style.display = 'none';
-    logEl.textContent   = '';
+    logEl.innerHTML     = '';
 
     const fd = new FormData();
     fd.append('theme', theme);
@@ -313,10 +314,10 @@ DASHBOARD = """<!DOCTYPE html>
           if (!line.startsWith('data: ')) continue;
           try {
             const evt = JSON.parse(line.slice(6));
-            if      (evt.t === 'log')  { logEl.textContent += '· ' + evt.m + '\n'; }
-            else if (evt.t === 'err')  { logEl.textContent += '✕ ' + evt.m + '\n'; toast('შეცდი: ' + evt.m); }
+            if      (evt.t === 'log')  { logEl.innerHTML += '<span style="color:#94a3b8">· ' + esc(evt.m) + '</span><br>'; }
+            else if (evt.t === 'err')  { logEl.innerHTML += '<span style="color:#ef4444">✕ ' + esc(evt.m) + '</span><br>'; toast('შეცდი: ' + evt.m); }
             else if (evt.t === 'done') {
-              logEl.textContent += '✓ ქარდი შექდი\n';
+              logEl.innerHTML += '<span style="color:#4ade80">✓ ქარდი შექდი</span><br>';
               document.getElementById('res-auto-img').src  = evt.card_url;
               document.getElementById('res-auto-dl').href  = evt.card_url;
               resEl.style.display = 'block';
@@ -324,9 +325,10 @@ DASHBOARD = """<!DOCTYPE html>
             }
           } catch(_) {}
         }
+        logEl.scrollTop = logEl.scrollHeight;
       }
     } catch(e) {
-      logEl.textContent += '✕ ნეტვერი შეცდი: ' + e.message + '\n';
+      logEl.innerHTML += '<span style="color:#ef4444">✕ ნეტვერი შეცდი: ' + esc(e.message) + '</span><br>';
       toast('ნეტვერი შეცდი: ' + e.message);
     }
 
@@ -353,17 +355,25 @@ DASHBOARD = """<!DOCTYPE html>
   }
   loadHistory();
 
-  // ── AI-backend badge ──────────────────────────────────────────────
+  // ── status check + env-var warning ───────────────────────────────
   fetch('/api/status').then(r=>r.json()).then(d=>{
     const b = document.getElementById('ai-badge');
     if (b && d.ai_backend) b.textContent = '[' + d.ai_backend + ']';
+    const miss = [];
+    if (d.tavily_key === false) miss.push('TAVILY_API_KEY');
+    if (d.gemini_key === false) miss.push('GEMINI_API_KEY');
+    if (miss.length) {
+      document.getElementById('auto-log').innerHTML =
+        '<span style="color:#f59e0b">⚠ Railway env vars missing: ' + miss.join(', ') +
+        ' — ავტ ქარდი შეფერდა</span>';
+    }
   });
 
   // ── toast helper ──────────────────────────────────────────────────
   window.toast = function(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg; t.style.display = 'block';
-    setTimeout(() => t.style.display = 'none', 3000);
+    setTimeout(() => t.style.display = 'none', 5000);
   };
 })();
 </script>
@@ -417,7 +427,9 @@ async def api_history():
 async def api_status():
     return {"telegram": "running" if TELEGRAM_TOKEN else "disabled",
             "cards":    len(history),
-            "ai_backend": os.environ.get("BACKEND", "claude").upper()}
+            "ai_backend": os.environ.get("BACKEND", "claude").upper(),
+            "tavily_key": bool(os.environ.get("TAVILY_API_KEY")),
+            "gemini_key": bool(os.environ.get("GEMINI_API_KEY"))}
 
 
 @app.post("/api/auto-generate")
