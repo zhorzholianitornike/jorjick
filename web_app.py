@@ -17,6 +17,7 @@ Env vars (set in Railway dashboard):
 """
 
 import asyncio
+import json
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -192,6 +193,25 @@ DASHBOARD = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- auto-generate panel -->
+  <div class="panel">
+    <h2>ავტო ქარდი <span id="ai-badge" style="font-size:11px;color:#64748b;font-weight:400"></span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ამბი ძიება → AI → ქარდი → Facebook</p>
+    <div class="row">
+      <div class="g"><label>თემა</label>
+        <input id="inp-theme" placeholder="ქართველი ამბი">
+      </div>
+    </div>
+    <button class="btn" id="btn-auto" onclick="autoGen()">გამდი</button>
+    <div class="spin" id="spin-auto"></div>
+    <div class="result" id="res-auto">
+      <img id="res-auto-img" alt="">
+      <br>
+      <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ ჩამტვირთი</a>
+    </div>
+    <div id="auto-log" style="margin-top:12px;font-size:12px;color:#64748b;white-space:pre-wrap"></div>
+  </div>
+
   <!-- history -->
   <div class="history">
     <h2>ამდი ქარდი</h2>
@@ -255,6 +275,35 @@ DASHBOARD = """<!DOCTYPE html>
     document.getElementById('spin').style.display = 'none';
   };
 
+  // ── auto-generate ─────────────────────────────────────────────────
+  window.autoGen = async function() {
+    const theme = document.getElementById('inp-theme').value.trim();
+    if (!theme) { toast('თემა!'); return; }
+
+    document.getElementById('btn-auto').disabled = true;
+    document.getElementById('spin-auto').style.display = 'block';
+    document.getElementById('res-auto').style.display  = 'none';
+    document.getElementById('auto-log').textContent    = '';
+
+    const fd = new FormData();
+    fd.append('theme', theme);
+
+    try {
+      const r    = await fetch('/api/auto-generate', { method:'POST', body:fd });
+      const data = await r.json();
+      if (data.log) document.getElementById('auto-log').textContent = data.log.join('\n');
+      if (data.card_url) {
+        document.getElementById('res-auto-img').src  = data.card_url;
+        document.getElementById('res-auto-dl').href  = data.card_url;
+        document.getElementById('res-auto').style.display = 'block';
+        loadHistory();
+      } else { toast('შეცდი: ' + (data.error || 'unknown')); }
+    } catch(e) { toast('ნეტვერი შეცდი: ' + e.message); }
+
+    document.getElementById('btn-auto').disabled = false;
+    document.getElementById('spin-auto').style.display = 'none';
+  };
+
   // ── history ───────────────────────────────────────────────────────
   async function loadHistory() {
     const items = await (await fetch('/api/history')).json();
@@ -272,6 +321,12 @@ DASHBOARD = """<!DOCTYPE html>
     });
   }
   loadHistory();
+
+  // ── AI-backend badge ──────────────────────────────────────────────
+  fetch('/api/status').then(r=>r.json()).then(d=>{
+    const b = document.getElementById('ai-badge');
+    if (b && d.ai_backend) b.textContent = '[' + d.ai_backend + ']';
+  });
 
   // ── toast helper ──────────────────────────────────────────────────
   window.toast = function(msg) {
@@ -330,7 +385,71 @@ async def api_history():
 @app.get("/api/status")
 async def api_status():
     return {"telegram": "running" if TELEGRAM_TOKEN else "disabled",
-            "cards": len(history)}
+            "cards":    len(history),
+            "ai_backend": os.environ.get("BACKEND", "claude").upper()}
+
+
+@app.post("/api/auto-generate")
+async def api_auto_generate(theme: str = Form(...)):
+    """Search → AI pick → card → Facebook.  Returns card_url + log."""
+    from search import search_web, download_image, create_placeholder
+
+    card_id = uuid.uuid4().hex[:8]
+    log: list[str] = []
+
+    try:
+        # 1. search
+        log.append(f'ამბი ძიება: "{theme}"')
+        results = await asyncio.to_thread(search_web, theme, 5)
+        if not results or "error" in results[0]:
+            return JSONResponse(status_code=500,
+                                content={"error": results[0].get("error", "ამბი ძიება ჩამიდა"),
+                                         "log": log})
+        log.append(f"შედეგი: {len(results)} ამბი")
+
+        # 2. AI picks the best story
+        log.append("AI…")
+        card_info = await asyncio.to_thread(_ai_pick_story, results)
+        if "error" in card_info:
+            return JSONResponse(status_code=500,
+                                content={"error": card_info["error"], "log": log})
+
+        name      = card_info.get("name", "Unknown")
+        text      = card_info.get("text", "")
+        image_url = card_info.get("image_url")
+        log.append(f"AI: {name}")
+
+        # 3. download image (best-effort)
+        photo_path = None
+        if image_url:
+            log.append("ფოტო ჩამტვირთი…")
+            photo_path = await asyncio.to_thread(
+                download_image, image_url, f"temp/auto_{card_id}.jpg"
+            )
+            log.append(f"ფოტო: {'OK' if photo_path else 'ჩამიდა'}")
+
+        if not photo_path:
+            photo_path = await asyncio.to_thread(create_placeholder)
+            log.append("ფოტო: placeholder")
+
+        # 4. generate card
+        card_path = CARDS / f"{card_id}_auto.jpg"
+        await asyncio.to_thread(
+            generator.generate, photo_path, name, text, str(card_path)
+        )
+        log.append("ქარდი შექდი: OK")
+
+        # 5. Facebook upload in background
+        asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
+        log.append("Facebook ატვირთი…")
+
+        card_url = f"/cards/{card_id}_auto.jpg"
+        _add_history(name, card_url)
+        return {"card_url": card_url, "name": name, "log": log}
+
+    except Exception as exc:
+        log.append(f"შეცდი: {exc}")
+        return JSONResponse(status_code=500, content={"error": str(exc), "log": log})
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +477,70 @@ def _upload_and_notify(card_path: str, name: str):
         _send_telegram(f"ქარდი ატვირთულია\nქარდის სახელი: {name}\n{now}")
     else:
         _send_telegram(f"ქარდი ატვირთვა ჩამიდა\nქარდის სახელი: {name}\n{now}")
+
+
+# ---------------------------------------------------------------------------
+# AI story picker  (single-turn, no tool loop)
+# ---------------------------------------------------------------------------
+def _ai_pick_story(results: list[dict]) -> dict:
+    """Send search results to Kimi / Claude → {name, text, image_url}."""
+    prompt = (
+        "You are given news search results. Pick the MOST interesting story and extract:\n"
+        "- name: person name or short topic headline (max 40 chars)\n"
+        "- text: 1-2 sentence summary (max 120 chars)\n"
+        "- image_url: a URL from the results that likely contains an image, or null\n\n"
+        "Results:\n" + json.dumps(results, ensure_ascii=False) + "\n\n"
+        "Reply ONLY with valid JSON:\n"
+        '{"name":"…","text":"…","image_url":"… or null"}'
+    )
+
+    backend = os.environ.get("BACKEND", "claude").lower()
+
+    try:
+        if backend == "kimi":
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=os.environ.get("MOONSHOT_API_KEY"),
+                base_url="https://api.moonshot.ai/v1",
+            )
+            resp = client.chat.completions.create(
+                model="kimi-k2-0905-preview",
+                max_tokens=256,
+                temperature=0.3,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.choices[0].message.content or ""
+        else:
+            import anthropic as _anthropic
+            client = _anthropic.Anthropic(
+                api_key=os.environ.get("ANTHROPIC_API_KEY")
+            )
+            resp = client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=256,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text
+
+        # strip markdown code-block wrapper if present
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        # extract outermost JSON object
+        start = raw.index("{")
+        end   = raw.rindex("}")
+        data  = json.loads(raw[start:end + 1])
+
+        # normalise null-like values
+        if data.get("image_url") in (None, "null", ""):
+            data["image_url"] = None
+
+        return data
+
+    except Exception as exc:
+        return {"error": f"AI: {exc}"}
 
 
 # ---------------------------------------------------------------------------
