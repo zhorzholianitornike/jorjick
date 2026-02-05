@@ -297,7 +297,11 @@ DASHBOARD = """<!DOCTYPE html>
         document.getElementById('res-auto-dl').href  = data.card_url;
         document.getElementById('res-auto').style.display = 'block';
         loadHistory();
-      } else { toast('შეცდი: ' + (data.error || 'unknown')); }
+      } else {
+        const err = data.error || 'unknown';
+        document.getElementById('auto-log').textContent += '\n შეცდი: ' + err;
+        toast('შეცდი: ' + err);
+      }
     } catch(e) { toast('ნეტვერი შეცდი: ' + e.message); }
 
     document.getElementById('btn-auto').disabled = false;
