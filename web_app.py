@@ -26,7 +26,7 @@ from pathlib import Path
 import requests
 import uvicorn
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from card_generator import CardGenerator
@@ -195,8 +195,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>ავტო ქარდი <span id="ai-badge" style="font-size:11px;color:#64748b;font-weight:400"></span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ამბი ძიება → AI → ქარდი → Facebook</p>
+    <h2>ავტო ქარდი <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily ძიება → Gemini → ქარდი → Facebook</p>
     <div class="row">
       <div class="g"><label>თემა</label>
         <input id="inp-theme" placeholder="ქართველი ამბი">
@@ -209,7 +209,7 @@ DASHBOARD = """<!DOCTYPE html>
       <br>
       <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ ჩამტვირთი</a>
     </div>
-    <div id="auto-log" style="margin-top:12px;font-size:12px;color:#64748b;white-space:pre-wrap"></div>
+    <div id="auto-log" style="margin-top:14px;font-size:12px;color:#94a3b8;white-space:pre-wrap;line-height:1.8;max-height:140px;overflow-y:auto"></div>
   </div>
 
   <!-- history -->
@@ -275,37 +275,64 @@ DASHBOARD = """<!DOCTYPE html>
     document.getElementById('spin').style.display = 'none';
   };
 
-  // ── auto-generate ─────────────────────────────────────────────────
+  // ── auto-generate (SSE stream) ────────────────────────────────────
   window.autoGen = async function() {
     const theme = document.getElementById('inp-theme').value.trim();
     if (!theme) { toast('თემა!'); return; }
 
-    document.getElementById('btn-auto').disabled = true;
-    document.getElementById('spin-auto').style.display = 'block';
-    document.getElementById('res-auto').style.display  = 'none';
-    document.getElementById('auto-log').textContent    = '';
+    const btn   = document.getElementById('btn-auto');
+    const spin  = document.getElementById('spin-auto');
+    const logEl = document.getElementById('auto-log');
+    const resEl = document.getElementById('res-auto');
+
+    btn.disabled     = true;
+    btn.textContent  = 'დამდი…';
+    spin.style.display  = 'block';
+    resEl.style.display = 'none';
+    logEl.textContent   = '';
 
     const fd = new FormData();
     fd.append('theme', theme);
 
     try {
-      const r    = await fetch('/api/auto-generate', { method:'POST', body:fd });
-      const data = await r.json();
-      if (data.log) document.getElementById('auto-log').textContent = data.log.join('\n');
-      if (data.card_url) {
-        document.getElementById('res-auto-img').src  = data.card_url;
-        document.getElementById('res-auto-dl').href  = data.card_url;
-        document.getElementById('res-auto').style.display = 'block';
-        loadHistory();
-      } else {
-        const err = data.error || 'unknown';
-        document.getElementById('auto-log').textContent += '\n შეცდი: ' + err;
-        toast('შეცდი: ' + err);
-      }
-    } catch(e) { toast('ნეტვერი შეცდი: ' + e.message); }
+      const r      = await fetch('/api/auto-generate', { method:'POST', body:fd });
+      const reader = r.body.getReader();
+      const dec    = new TextDecoder();
+      let   buf    = '';
 
-    document.getElementById('btn-auto').disabled = false;
-    document.getElementById('spin-auto').style.display = 'none';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+
+        const parts = buf.split('\n\n');
+        buf = parts.pop();                              // keep incomplete tail
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if      (evt.t === 'log')  { logEl.textContent += '· ' + evt.m + '\n'; }
+            else if (evt.t === 'err')  { logEl.textContent += '✕ ' + evt.m + '\n'; toast('შეცდი: ' + evt.m); }
+            else if (evt.t === 'done') {
+              logEl.textContent += '✓ ქარდი შექდი\n';
+              document.getElementById('res-auto-img').src  = evt.card_url;
+              document.getElementById('res-auto-dl').href  = evt.card_url;
+              resEl.style.display = 'block';
+              loadHistory();
+            }
+          } catch(_) {}
+        }
+      }
+    } catch(e) {
+      logEl.textContent += '✕ ნეტვერი შეცდი: ' + e.message + '\n';
+      toast('ნეტვერი შეცდი: ' + e.message);
+    }
+
+    btn.disabled    = false;
+    btn.textContent = 'გამდი';
+    spin.style.display = 'none';
   };
 
   // ── history ───────────────────────────────────────────────────────
@@ -395,65 +422,73 @@ async def api_status():
 
 @app.post("/api/auto-generate")
 async def api_auto_generate(theme: str = Form(...)):
-    """Search → AI pick → card → Facebook.  Returns card_url + log."""
-    from search import search_web, download_image, create_placeholder
+    """Tavily → Gemini → card → Facebook.  Streams progress via SSE."""
+    from search import search_tavily, download_image, create_placeholder
 
     card_id = uuid.uuid4().hex[:8]
-    log: list[str] = []
 
-    try:
-        # 1. search
-        log.append(f'ამბი ძიება: "{theme}"')
-        results = await asyncio.to_thread(search_web, theme, 5)
-        if not results or "error" in results[0]:
-            return JSONResponse(status_code=500,
-                                content={"error": results[0].get("error", "ამბი ძიება ჩამიდა"),
-                                         "log": log})
-        log.append(f"შედეგი: {len(results)} ამბი")
+    async def _stream():
+        def _e(payload: dict) -> str:
+            return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
-        # 2. AI picks the best story
-        log.append("AI…")
-        card_info = await asyncio.to_thread(_ai_pick_story, results)
-        if "error" in card_info:
-            return JSONResponse(status_code=500,
-                                content={"error": card_info["error"], "log": log})
+        try:
+            # 1. Tavily search
+            yield _e({"t": "log", "m": f'ამბი ძიება: "{theme}"'})
+            tavily_res = await asyncio.to_thread(search_tavily, theme, 5)
+            if "error" in tavily_res:
+                yield _e({"t": "err", "m": tavily_res["error"]})
+                return
+            n_res = len(tavily_res.get("results", []))
+            n_img = len(tavily_res.get("images",  []))
+            yield _e({"t": "log", "m": f"შედეგი: {n_res} ამბი, {n_img} ფოტო"})
 
-        name      = card_info.get("name", "Unknown")
-        text      = card_info.get("text", "")
-        image_url = card_info.get("image_url")
-        log.append(f"AI: {name}")
+            # 2. Gemini picks the best story
+            yield _e({"t": "log", "m": "Gemini ამბი ვიჯერი…"})
+            card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
+            if "error" in card_info:
+                yield _e({"t": "err", "m": card_info["error"]})
+                return
 
-        # 3. download image (best-effort)
-        photo_path = None
-        if image_url:
-            log.append("ფოტო ჩამტვირთი…")
-            photo_path = await asyncio.to_thread(
-                download_image, image_url, f"temp/auto_{card_id}.jpg"
+            name      = card_info.get("name", "Unknown")
+            text      = card_info.get("text", "")
+            image_url = card_info.get("image_url")
+            yield _e({"t": "log", "m": f"Gemini: {name}"})
+
+            # 3. download image (best-effort)
+            photo_path = None
+            if image_url:
+                yield _e({"t": "log", "m": "ფოტო ჩამტვირთი…"})
+                photo_path = await asyncio.to_thread(
+                    download_image, image_url, f"temp/auto_{card_id}.jpg"
+                )
+                yield _e({"t": "log", "m": f"ფოტ: {'OK' if photo_path else 'ჩამიდა'}"})
+
+            if not photo_path:
+                photo_path = await asyncio.to_thread(create_placeholder)
+                yield _e({"t": "log", "m": "ფოტ: placeholder"})
+
+            # 4. generate card
+            yield _e({"t": "log", "m": "ქარდი გამდი…"})
+            card_path = CARDS / f"{card_id}_auto.jpg"
+            await asyncio.to_thread(
+                generator.generate, photo_path, name, text, str(card_path)
             )
-            log.append(f"ფოტო: {'OK' if photo_path else 'ჩამიდა'}")
 
-        if not photo_path:
-            photo_path = await asyncio.to_thread(create_placeholder)
-            log.append("ფოტო: placeholder")
+            # 5. Facebook upload in background
+            asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
+            card_url = f"/cards/{card_id}_auto.jpg"
+            _add_history(name, card_url)
+            yield _e({"t": "log", "m": "Facebook ატვირთი…"})
+            yield _e({"t": "done", "card_url": card_url, "name": name})
 
-        # 4. generate card
-        card_path = CARDS / f"{card_id}_auto.jpg"
-        await asyncio.to_thread(
-            generator.generate, photo_path, name, text, str(card_path)
-        )
-        log.append("ქარდი შექდი: OK")
+        except Exception as exc:
+            yield _e({"t": "err", "m": str(exc)})
 
-        # 5. Facebook upload in background
-        asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
-        log.append("Facebook ატვირთი…")
-
-        card_url = f"/cards/{card_id}_auto.jpg"
-        _add_history(name, card_url)
-        return {"card_url": card_url, "name": name, "log": log}
-
-    except Exception as exc:
-        log.append(f"შეცდი: {exc}")
-        return JSONResponse(status_code=500, content={"error": str(exc), "log": log})
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -545,6 +580,59 @@ def _ai_pick_story(results: list[dict]) -> dict:
 
     except Exception as exc:
         return {"error": f"AI: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Gemini story picker  (single-turn, used by /api/auto-generate)
+# ---------------------------------------------------------------------------
+def _pick_gemini(tavily_res: dict) -> dict:
+    """Send Tavily results to Gemini → {name, text, image_url}."""
+    import google.generativeai as genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"error": "GEMINI_API_KEY env var is not set"}
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # format articles for the prompt
+    lines = []
+    for i, r in enumerate(tavily_res.get("results", []), 1):
+        lines.append(f"{i}. {r.get('title', '')}\n   {r.get('content', '')[:200]}")
+
+    images = tavily_res.get("images", [])
+
+    prompt = (
+        "You are a news editor. Pick the MOST interesting story from these results.\n"
+        "Write the summary IN GEORGIAN (ქართული ენა).\n"
+        "Reply ONLY with valid JSON, no other text:\n"
+        '{"name":"headline 3-4 words","text":"summary in Georgian 30-40 words","image_url":"best image URL or null"}\n\n'
+        "Results:\n" + "\n".join(lines) + "\n\n"
+        "Available image URLs:\n" + "\n".join(images[:10] or ["none"]) + "\n"
+    )
+
+    try:
+        resp = model.generate_content(prompt)
+        raw  = resp.text
+
+        # strip markdown code-block wrapper if present
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        start = raw.index("{")
+        end   = raw.rindex("}")
+        data  = json.loads(raw[start:end + 1])
+
+        if data.get("image_url") in (None, "null", ""):
+            data["image_url"] = None
+
+        return data
+
+    except Exception as exc:
+        return {"error": f"Gemini: {exc}"}
 
 
 # ---------------------------------------------------------------------------

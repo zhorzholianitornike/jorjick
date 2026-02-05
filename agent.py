@@ -52,6 +52,9 @@ CLAUDE_THINK   = 10_000
 KIMI_MODEL     = "kimi-k2-0905-preview"
 KIMI_MAX_TOK   = 8_000
 
+# Gemini
+GEMINI_MODEL   = "gemini-2.0-flash"
+
 MAX_TOOL_ROUNDS = 10   # safety cap — stops infinite tool loops
 
 SYSTEM_PROMPT = (
@@ -141,6 +144,33 @@ def _to_openai_tools() -> list[dict]:
     ]
 
 
+def _to_gemini_tools() -> list:
+    """Convert shared tool defs → Gemini FunctionDeclaration list."""
+    import google.generativeai.protos as glm
+
+    TYPE_MAP = {"string": glm.Type.STRING, "integer": glm.Type.INTEGER}
+
+    declarations = []
+    for d in _TOOL_DEFS:
+        props = {
+            k: glm.Schema(
+                type=TYPE_MAP.get(v["type"], glm.Type.STRING),
+                description=v.get("description", ""),
+            )
+            for k, v in d["properties"].items()
+        }
+        declarations.append(glm.FunctionDeclaration(
+            name=d["name"],
+            description=d["description"],
+            parameters=glm.Schema(
+                type=glm.Type.OBJECT,
+                properties=props,
+                required=d["required"],
+            ),
+        ))
+    return [glm.Tool(function_declarations=declarations)]
+
+
 # ---------------------------------------------------------------------------
 # Tool executor
 # ---------------------------------------------------------------------------
@@ -198,16 +228,35 @@ class Agent:
             # OpenAI-style APIs need the system message inside the messages list
             self.history.append({"role": "system", "content": SYSTEM_PROMPT})
 
+        elif self.backend == "gemini":
+            import google.generativeai as genai
+            genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+            self.tools  = _to_gemini_tools()
+            self.client = genai.GenerativeModel(
+                model_name=GEMINI_MODEL,
+                tools=self.tools,
+                system_instruction=SYSTEM_PROMPT,
+            )
+            self._gemini_chat    = None   # lazily created on first chat()
+            self._gemini_pending = None   # tool-result parts waiting to be sent
+
         else:
-            raise ValueError(f"Unknown backend '{backend}'. Use 'claude' or 'kimi'.")
+            raise ValueError(f"Unknown backend '{backend}'. Use 'claude', 'kimi' or 'gemini'.")
 
     # ── public ─────────────────────────────────────────────────────────────
     def chat(self, user_input: str) -> str:
         """Agentic loop: user → model → tools → … → final text."""
         self.history.append({"role": "user", "content": user_input})
 
+        _dispatch = {
+            "claude": self._turn_claude,
+            "kimi":   self._turn_kimi,
+            "gemini": self._turn_gemini,
+        }
+        turn = _dispatch[self.backend]
+
         for _ in range(MAX_TOOL_ROUNDS):
-            text = self._turn_claude() if self.backend == "claude" else self._turn_kimi()
+            text = turn()
             if text is not None:
                 return text
 
@@ -217,6 +266,9 @@ class Agent:
         self.history.clear()
         if self.backend == "kimi":
             self.history.append({"role": "system", "content": SYSTEM_PROMPT})
+        if self.backend == "gemini":
+            self._gemini_chat    = None
+            self._gemini_pending = None
 
     # ── Claude turn ────────────────────────────────────────────────────────
     def _turn_claude(self) -> Optional[str]:
@@ -294,6 +346,46 @@ class Agent:
                 "tool_call_id": tc.id,
                 "content":      _run_tool(tc.function.name, json.loads(tc.function.arguments)),
             })
+        return None   # loop again
+
+    # ── Gemini turn ─────────────────────────────────────────────────────
+    def _turn_gemini(self) -> Optional[str]:
+        import google.generativeai.protos as glm
+
+        # lazily start the chat session on first turn
+        if self._gemini_chat is None:
+            self._gemini_chat = self.client.start_chat()
+
+        # send: either pending tool-results or the latest user message
+        if self._gemini_pending is not None:
+            response = self._gemini_chat.send_message(self._gemini_pending)
+            self._gemini_pending = None
+        else:
+            response = self._gemini_chat.send_message(self.history[-1]["content"])
+
+        # collect function-call parts (empty name == not a call)
+        tool_calls = [p.function_call for p in response.parts
+                      if p.function_call.name]
+
+        if not tool_calls:
+            # pure text → done
+            text = response.text or ""
+            self.history.append({"role": "assistant", "content": text})
+            return text
+
+        # execute every tool call, build FunctionResponse parts
+        result_parts = []
+        for tc in tool_calls:
+            result = _run_tool(tc.name, dict(tc.args))
+            self.history.append({"role": "tool", "content": f"{tc.name}: {result}"})
+            result_parts.append(glm.Part(
+                function_response=glm.FunctionResponse(
+                    name=tc.name,
+                    response={"output": result},
+                )
+            ))
+
+        self._gemini_pending = result_parts
         return None   # loop again
 
 

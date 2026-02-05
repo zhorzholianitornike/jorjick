@@ -74,3 +74,24 @@ def create_placeholder(dest: str = "temp/placeholder.jpg") -> str:
         draw.rectangle([0, y, 1080, y + 1], fill=(v, v, int(40 * (1 - t))))
     img.save(dest, "JPEG", quality=90)
     return dest
+
+
+# ---------------------------------------------------------------------------
+# Tavily search  (needs TAVILY_API_KEY)
+# ---------------------------------------------------------------------------
+def search_tavily(query: str, max_results: int = 5) -> dict:
+    """Tavily search with images.  Returns {results:[…], images:[…]} or {error:…}."""
+    try:
+        from tavily import TavilyClient
+    except ImportError:
+        return {"error": "tavily-python not installed"}
+
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        return {"error": "TAVILY_API_KEY env var is not set"}
+
+    try:
+        client = TavilyClient(api_key=api_key)
+        return  client.search(query, max_results=max_results, include_images=True)
+    except Exception as exc:
+        return {"error": str(exc)}
