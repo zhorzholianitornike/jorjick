@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """
 News-card generator — portrait 1080×1350.
-Design translated directly from the HTML/CSS reference template.
+Design: diagonal dark overlay, red square name prefix, gradient separator line.
 
 Layout:
 
     ┌─────────────────────────────────────┐
-    │                          [logo]     │
+    │                          [logo]     │  ← top-right (optional)
     │                                     │
-    │          person photo               │
+    │          person photo               │  ← clear area (top-right)
+    │   ░░░ diagonal dark overlay ░░░░░░  │  ← left side darkens earlier
     │                                     │
-    │  ░░░ gradient (60 % … 0 %) ░░░░░░░  │
-    │                                     │
-    │  ● Name                             │  54 px bold, red dot prefix
-    │    Quote text …                     │  30 px, indented 42 px
-    │    … wraps here.                    │
-    └█████████████████████████████████████┘  18 px red bottom bar
+    │  ■ NAME NAME                        │  38 px bold, red square, uppercase
+    │  ─────────►                         │  ← 2 px gradient line (red → transparent)
+    │  description text …                 │  16 px, normal case
+    │  … wraps here.                      │
+    └█████████████████████████████████████┘  20 px red bottom bar
 
 Usage:
     from card_generator import CardGenerator
     gen = CardGenerator(logo_path="logo.png")   # logo optional
-    gen.generate("photo.jpg", "Name", "Quote text …", "out.jpg")
+    gen.generate("photo.jpg", "Name", "Text …", "out.jpg")
 """
 
 import os
@@ -36,48 +36,58 @@ CARD_W  = 1080
 CARD_H  = 1350
 
 # ---------------------------------------------------------------------------
-# COLOURS  (match the CSS variables)
+# COLOURS
 # ---------------------------------------------------------------------------
-ACCENT_RED  = (229, 57, 53)          # --accent-red  #E53935
+ACCENT_RED  = (255, 59, 0)          # #ff3b00
 WHITE       = (255, 255, 255)
 SHADOW      = (0, 0, 0, 128)        # text-shadow approximation
-
-BLUE_OVERLAY = (20, 50, 110, 100)    # semi-transparent blue
-BLUE_COVER_H = 0.70                  # covers bottom 70 % of the card
 
 # ---------------------------------------------------------------------------
 # NAME ROW
 # ---------------------------------------------------------------------------
-NAME_SIZE   = 54                     # font-size: 54px
-DOT_W       = 10                     # .name::before  width/height
-DOT_GAP     = 16                     # margin-right on the dot
+NAME_SIZE   = 38                    # font-size: 38px
+SQUARE_SIZE = 18                    # .square  width & height
+SQUARE_GAP  = 15                    # .square  margin-right
 
 # ---------------------------------------------------------------------------
-# QUOTE BLOCK
+# SEPARATOR LINE  (gradient red → transparent)
 # ---------------------------------------------------------------------------
-QUOTE_SIZE  = 30                     # font-size: 30px
-QUOTE_LH    = int(QUOTE_SIZE * 1.5)  # line-height: 1.5
-QUOTE_INDENT= 42                     # padding-left: 42px
-QUOTE_BLOCK_MAX = 900                # max-width: 900px
+LINE_H      = 2                     # height: 2px
+LINE_GAP_T  = 12                    # margin-top: 12px
+LINE_GAP_B  = 20                    # margin-bottom: 20px
+
+# ---------------------------------------------------------------------------
+# DESCRIPTION
+# ---------------------------------------------------------------------------
+DESC_SIZE   = 16                    # font-size: 16px
+DESC_LH     = int(DESC_SIZE * 1.6)  # line-height: 1.6  → 25 px
 
 # ---------------------------------------------------------------------------
 # LAYOUT
 # ---------------------------------------------------------------------------
-PAD_L       = 80                     # content padding-left
-PAD_R       = 80                     # content padding-right
-PAD_BOT     = 90                     # content padding-bottom
-NAME_GAP    = 24                     # .name margin-bottom
+PAD_L       = 80                    # content padding-left
+PAD_R       = 80                    # content padding-right
+PAD_BOT     = 90                    # content padding-bottom
 
 # ---------------------------------------------------------------------------
 # BOTTOM BAR
 # ---------------------------------------------------------------------------
-BAR_H       = 18                     # .bottom-accent height
+BAR_H       = 20                    # height: 20px
 
 # ---------------------------------------------------------------------------
 # LOGO
 # ---------------------------------------------------------------------------
-LOGO_PAD    = 40                     # .logo padding
-LOGO_W      = 90                     # .logo img width
+LOGO_TOP    = 35                    # top: 35px
+LOGO_RIGHT  = 45                    # right: 45px
+LOGO_W      = 65                    # img width: 65px
+
+# ---------------------------------------------------------------------------
+# DIAGONAL OVERLAY  (column-band dark gradient)
+# ---------------------------------------------------------------------------
+DIAG_COLS      = 8                  # column bands (more = smoother diagonal)
+DIAG_START_L   = 0.28               # gradient-start fraction from top, left edge
+DIAG_START_R   = 0.52               # gradient-start fraction from top, right edge
+DIAG_MAX_ALPHA = 200                # darkest alpha value at the bottom
 
 # ---------------------------------------------------------------------------
 # Font helpers
@@ -126,9 +136,8 @@ class CardGenerator:
     ) -> str:
         """Generate card → save as JPEG → return output_path."""
         img = self._cover(photo_path)
-        img = self._gradient(img)
-        img = self._blue_overlay(img)
-        self._content(img, name.upper(), text.upper())
+        img = self._diagonal_overlay(img)
+        img = self._content(img, name.upper(), text)   # name uppercase, text as-is
         self._bottom_bar(img)
         if self.logo_path and os.path.exists(self.logo_path):
             self._logo(img)
@@ -147,48 +156,35 @@ class CardGenerator:
         top   = (nh - CARD_H) // 2
         return img.crop((left, top, left + CARD_W, top + CARD_H))
 
-    # ── gradient ───────────────────────────────────────────────────────────
+    # ── diagonal overlay ───────────────────────────────────────────────────
     @staticmethod
-    def _gradient(img: Image.Image) -> Image.Image:
+    def _diagonal_overlay(img: Image.Image) -> Image.Image:
         """
-        Matches the CSS exactly:
-            linear-gradient(to top,
-                rgba(0,0,0,0.85)  0 %,   → bottom
-                rgba(0,0,0,0.55) 25 %,
-                rgba(0,0,0,0.0 ) 60 %)   → transparent
+        Dark gradient with a diagonal edge — transparent at top-right,
+        dark at bottom.  Column bands give a smooth diagonal transition.
         """
         w, h  = img.size
         ov    = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw  = ImageDraw.Draw(ov)
 
-        y60   = h - int(h * 0.60)       # y where gradient becomes 0
-        y25   = h - int(h * 0.25)       # y at the 0.55 keyframe
+        col_w = w // DIAG_COLS
+        for cx in range(DIAG_COLS):
+            frac    = cx / max(DIAG_COLS - 1, 1)            # 0 … 1  left → right
+            y_start = int(h * (DIAG_START_L + frac * (DIAG_START_R - DIAG_START_L)))
+            x1      = cx * col_w
+            x2      = (cx + 1) * col_w if cx < DIAG_COLS - 1 else w
 
-        for y in range(y60, h):
-            if y < y25:                  # 60 %…25 %  →  alpha 0…140
-                t     = (y - y60) / max(y25 - y60, 1)
-                alpha = int(140 * t)
-            else:                        # 25 %…0 %   →  alpha 140…217
-                t     = (y - y25) / max(h - y25, 1)
-                alpha = int(140 + 77 * t)
-            draw.rectangle([0, y, w, y + 1], fill=(0, 0, 0, alpha))
+            for y in range(y_start, h):
+                t     = (y - y_start) / max(h - y_start, 1)
+                alpha = min(int(t * DIAG_MAX_ALPHA), DIAG_MAX_ALPHA)
+                draw.rectangle([x1, y, x2, y + 1], fill=(0, 0, 0, alpha))
 
-        return Image.alpha_composite(img, ov)
-
-    # ── blue overlay (bottom 70 %) ─────────────────────────────────────────
-    @staticmethod
-    def _blue_overlay(img: Image.Image) -> Image.Image:
-        """Semi-transparent blue rectangle over the bottom 70 % of the card."""
-        w, h  = img.size
-        ov    = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw  = ImageDraw.Draw(ov)
-        draw.rectangle([0, h - int(h * BLUE_COVER_H), w, h], fill=BLUE_OVERLAY)
         return Image.alpha_composite(img, ov)
 
     # ── text helpers ───────────────────────────────────────────────────────
     @staticmethod
     def _shadow(draw, pos, text, font, color=WHITE):
-        """Draw text with a simple drop-shadow (approx text-shadow: 0 2px 4px)."""
+        """Draw text with a simple drop-shadow."""
         draw.text((pos[0] + 1, pos[1] + 2), text, fill=SHADOW, font=font)
         draw.text(pos,                       text, fill=color,  font=font)
 
@@ -208,46 +204,72 @@ class CardGenerator:
             lines.append(cur)
         return lines
 
-    # ── content: name row + quote block ────────────────────────────────────
-    def _content(self, img: Image.Image, name: str, text: str):
-        w, h      = img.size
-        draw      = ImageDraw.Draw(img)
+    # ── content: name + separator line + description ───────────────────────
+    def _content(self, img: Image.Image, name: str, text: str) -> Image.Image:
+        """
+        Draws name row, gradient separator line, and description text.
+        Returns the image (new object after the separator alpha-composite).
+        """
+        w, h       = img.size
+        draw       = ImageDraw.Draw(img)
 
         name_font  = _get_font(NAME_SIZE)
-        quote_font = _get_font(QUOTE_SIZE)
+        desc_font  = _get_font(DESC_SIZE)
 
-        # ── wrap quote lines ──
-        max_q_w   = min(QUOTE_BLOCK_MAX, w - PAD_L - PAD_R) - QUOTE_INDENT
-        lines     = self._wrap(text, max_q_w, quote_font)
+        # ── measure & wrap ──
+        max_desc_w = w - PAD_L - PAD_R
+        lines      = self._wrap(text, max_desc_w, desc_font)
+        name_h     = name_font.getbbox(name)[3] - name_font.getbbox(name)[1]
 
-        # ── measure heights ──
-        name_h    = name_font.getbbox(name)[3] - name_font.getbbox(name)[1]
-
-        total_h   = (
+        total_h    = (
             name_h
-            + NAME_GAP
-            + len(lines) * QUOTE_LH
+            + LINE_GAP_T + LINE_H + LINE_GAP_B
+            + len(lines) * DESC_LH
         )
 
         # ── anchor to bottom ──
         y = h - PAD_BOT - BAR_H - total_h
 
-        # ── NAME: [red dot] [name text] ──
-        dot_y = y + (name_h - DOT_W) // 2
+        # ── NAME ROW: [■ square] [NAME] ──
+        sq_y = y + (name_h - SQUARE_SIZE) // 2
         draw.rectangle(
-            [PAD_L, dot_y, PAD_L + DOT_W, dot_y + DOT_W],
+            [PAD_L, sq_y, PAD_L + SQUARE_SIZE, sq_y + SQUARE_SIZE],
             fill=ACCENT_RED,
         )
-        self._shadow(draw, (PAD_L + DOT_W + DOT_GAP, y), name, name_font)
-        y += name_h + NAME_GAP
+        self._shadow(draw, (PAD_L + SQUARE_SIZE + SQUARE_GAP, y), name, name_font)
+        y += name_h
 
-        # ── QUOTE ──
-        text_x  = PAD_L + QUOTE_INDENT     # indented text start
+        # ── SEPARATOR LINE  (red → transparent, left → right) ──
+        y       += LINE_GAP_T
+        line_w   = w - PAD_L - PAD_R
+        r, g, b  = ACCENT_RED
 
-        # wrapped quote lines
+        # build 1-row gradient strip directly in memory (fast)
+        strip_data = bytearray(line_w * 4)          # RGBA
+        for px in range(line_w):
+            a   = int(255 * (1 - px / max(line_w - 1, 1)))
+            off = px * 4
+            strip_data[off]   = r
+            strip_data[off+1] = g
+            strip_data[off+2] = b
+            strip_data[off+3] = a
+
+        strip = Image.frombytes("RGBA", (line_w, 1), bytes(strip_data))
+        if LINE_H > 1:
+            strip = strip.resize((line_w, LINE_H), Image.NEAREST)
+
+        line_ov = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        line_ov.paste(strip, (PAD_L, y))
+        img    = Image.alpha_composite(img, line_ov)   # new image
+        draw   = ImageDraw.Draw(img)                   # refresh draw context
+        y += LINE_H + LINE_GAP_B
+
+        # ── DESCRIPTION ──
         for line in lines:
-            self._shadow(draw, (text_x, y), line, quote_font)
-            y += QUOTE_LH
+            self._shadow(draw, (PAD_L, y), line, desc_font)
+            y += DESC_LH
+
+        return img
 
     # ── full-width red bottom bar ──────────────────────────────────────────
     @staticmethod
@@ -260,4 +282,4 @@ class CardGenerator:
     def _logo(self, img: Image.Image):
         logo = Image.open(self.logo_path).convert("RGBA")
         logo.thumbnail((LOGO_W, LOGO_W * 2), Image.LANCZOS)
-        img.paste(logo, (img.width - logo.width - LOGO_PAD, LOGO_PAD), logo)
+        img.paste(logo, (img.width - logo.width - LOGO_RIGHT, LOGO_TOP), logo)
