@@ -306,7 +306,7 @@ DASHBOARD = """<!DOCTYPE html>
         if (done) break;
         buf += dec.decode(value, { stream: true });
 
-        const parts = buf.split('\n\n');
+        const parts = buf.split('\\n\\n');
         buf = parts.pop();                              // keep incomplete tail
 
         for (const part of parts) {
