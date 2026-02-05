@@ -145,30 +145,21 @@ def _to_openai_tools() -> list[dict]:
 
 
 def _to_gemini_tools() -> list:
-    """Convert shared tool defs → Gemini FunctionDeclaration list."""
-    import google.generativeai.protos as glm
-
-    TYPE_MAP = {"string": glm.Type.STRING, "integer": glm.Type.INTEGER}
+    """Convert shared tool defs → google-genai Tool list."""
+    from google.genai import types
 
     declarations = []
     for d in _TOOL_DEFS:
-        props = {
-            k: glm.Schema(
-                type=TYPE_MAP.get(v["type"], glm.Type.STRING),
-                description=v.get("description", ""),
-            )
-            for k, v in d["properties"].items()
-        }
-        declarations.append(glm.FunctionDeclaration(
+        declarations.append(types.FunctionDeclaration(
             name=d["name"],
             description=d["description"],
-            parameters=glm.Schema(
-                type=glm.Type.OBJECT,
-                properties=props,
-                required=d["required"],
-            ),
+            parameters_json_schema={
+                "type":       "object",
+                "properties": d["properties"],
+                "required":   d["required"],
+            },
         ))
-    return [glm.Tool(function_declarations=declarations)]
+    return [types.Tool(function_declarations=declarations)]
 
 
 # ---------------------------------------------------------------------------
@@ -229,16 +220,17 @@ class Agent:
             self.history.append({"role": "system", "content": SYSTEM_PROMPT})
 
         elif self.backend == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+            from google import genai
+            from google.genai import types
+            self.client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
             self.tools  = _to_gemini_tools()
-            self.client = genai.GenerativeModel(
-                model_name=GEMINI_MODEL,
+            self._gemini_config = types.GenerateContentConfig(
                 tools=self.tools,
                 system_instruction=SYSTEM_PROMPT,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             )
-            self._gemini_chat    = None   # lazily created on first chat()
-            self._gemini_pending = None   # tool-result parts waiting to be sent
+            self._gemini_contents = []     # Gemini conversation history
+            self._gemini_pending  = None   # tool-result Content waiting to be sent
 
         else:
             raise ValueError(f"Unknown backend '{backend}'. Use 'claude', 'kimi' or 'gemini'.")
@@ -267,8 +259,8 @@ class Agent:
         if self.backend == "kimi":
             self.history.append({"role": "system", "content": SYSTEM_PROMPT})
         if self.backend == "gemini":
-            self._gemini_chat    = None
-            self._gemini_pending = None
+            self._gemini_contents = []
+            self._gemini_pending  = None
 
     # ── Claude turn ────────────────────────────────────────────────────────
     def _turn_claude(self) -> Optional[str]:
@@ -350,42 +342,41 @@ class Agent:
 
     # ── Gemini turn ─────────────────────────────────────────────────────
     def _turn_gemini(self) -> Optional[str]:
-        import google.generativeai.protos as glm
+        from google.genai import types
 
-        # lazily start the chat session on first turn
-        if self._gemini_chat is None:
-            self._gemini_chat = self.client.start_chat()
-
-        # send: either pending tool-results or the latest user message
+        # append pending tool results or the new user message
         if self._gemini_pending is not None:
-            response = self._gemini_chat.send_message(self._gemini_pending)
+            self._gemini_contents.append(self._gemini_pending)
             self._gemini_pending = None
         else:
-            response = self._gemini_chat.send_message(self.history[-1]["content"])
+            self._gemini_contents.append(self.history[-1]["content"])
 
-        # collect function-call parts (empty name == not a call)
-        tool_calls = [p.function_call for p in response.parts
-                      if p.function_call.name]
+        response = self.client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=self._gemini_contents,
+            config=self._gemini_config,
+        )
 
-        if not tool_calls:
+        # store model response for next round
+        self._gemini_contents.append(response.candidates[0].content)
+
+        if not response.function_calls:
             # pure text → done
             text = response.text or ""
             self.history.append({"role": "assistant", "content": text})
             return text
 
-        # execute every tool call, build FunctionResponse parts
+        # execute every tool call, pack into one tool-result Content
         result_parts = []
-        for tc in tool_calls:
-            result = _run_tool(tc.name, dict(tc.args))
-            self.history.append({"role": "tool", "content": f"{tc.name}: {result}"})
-            result_parts.append(glm.Part(
-                function_response=glm.FunctionResponse(
-                    name=tc.name,
-                    response={"output": result},
-                )
+        for fc in response.function_calls:
+            result = _run_tool(fc.name, dict(fc.args))
+            self.history.append({"role": "tool", "content": f"{fc.name}: {result}"})
+            result_parts.append(types.Part.from_function_response(
+                name=fc.name,
+                response={"output": result},
             ))
 
-        self._gemini_pending = result_parts
+        self._gemini_pending = types.Content(role="tool", parts=result_parts)
         return None   # loop again
 
 

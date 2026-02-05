@@ -587,14 +587,13 @@ def _ai_pick_story(results: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 def _pick_gemini(tavily_res: dict) -> dict:
     """Send Tavily results to Gemini → {name, text, image_url}."""
-    import google.generativeai as genai
+    from google import genai
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return {"error": "GEMINI_API_KEY env var is not set"}
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    client = genai.Client(api_key=api_key)
 
     # format articles for the prompt
     lines = []
@@ -613,7 +612,10 @@ def _pick_gemini(tavily_res: dict) -> dict:
     )
 
     try:
-        resp = model.generate_content(prompt)
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
         raw  = resp.text
 
         # strip markdown code-block wrapper if present
