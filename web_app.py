@@ -22,6 +22,7 @@ import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Optional
 
 import requests
 import uvicorn
@@ -475,10 +476,20 @@ async def api_auto_generate(theme: str = Form(...)):
             image_url = card_info.get("image_url")
             yield _e({"t": "log", "m": f"AI: {name}"})
 
-            # 3. download image (best-effort)
+            # 3. image: Gemini Imagen → download fallback → placeholder
             photo_path = None
-            if image_url:
-                yield _e({"t": "log", "m": "ფოტო ჩამტვირთი…"})
+            img_prompt = (
+                f"Professional news photograph about: {name}. {text} "
+                "Realistic photojournalism style. No text or watermarks."
+            )
+            yield _e({"t": "log", "m": "Gemini ფოტო გამდი…"})
+            photo_path = await asyncio.to_thread(
+                _generate_image_gemini, img_prompt, f"temp/auto_{card_id}.jpg"
+            )
+            if photo_path:
+                yield _e({"t": "log", "m": "ფოტ: Gemini OK"})
+            elif image_url:
+                yield _e({"t": "log", "m": "ფოტ: Gemini ჩამიდა — ჩამტვირთი…"})
                 photo_path = await asyncio.to_thread(
                     download_image, image_url, f"temp/auto_{card_id}.jpg"
                 )
@@ -656,6 +667,34 @@ def _pick_gemini(tavily_res: dict) -> dict:
 
     except Exception as exc:
         return {"error": f"Gemini: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Gemini Imagen  (generate a photo from a text prompt)
+# ---------------------------------------------------------------------------
+def _generate_image_gemini(prompt: str, dest: str) -> Optional[str]:
+    """Generate an image via Imagen 3.  Returns local path or None on any error."""
+    from google import genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return None
+
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_image(
+            model="imagen-3.0-generate-001",
+            prompt=prompt,
+        )
+        # response.generated_images[0].image  →  PIL Image
+        img = response.generated_images[0].image
+        img.save(dest, "JPEG", quality=90)
+        print(f"[GenImg] saved → {dest}")
+        return dest
+    except Exception as exc:
+        print(f"[GenImg] {exc}")
+        return None
 
 
 # ---------------------------------------------------------------------------
