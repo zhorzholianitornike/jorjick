@@ -454,17 +454,26 @@ async def api_auto_generate(theme: str = Form(...)):
             n_img = len(tavily_res.get("images",  []))
             yield _e({"t": "log", "m": f"შედეგი: {n_res} ამბი, {n_img} ფოტო"})
 
-            # 2. Gemini picks the best story
+            # 2. AI picks the best story  (Gemini first, Claude/Kimi fallback)
             yield _e({"t": "log", "m": "Gemini ამბი ვიჯერი…"})
             card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
             if "error" in card_info:
-                yield _e({"t": "err", "m": card_info["error"]})
-                return
+                # Gemini failed (429 quota, key missing, …) → try Claude / Kimi
+                yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi…"})
+                card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
+                if "error" in card_info:
+                    yield _e({"t": "err", "m": card_info["error"]})
+                    return
+                # if fallback didn't pick an image, grab the first Tavily image
+                if not card_info.get("image_url"):
+                    imgs = tavily_res.get("images", [])
+                    if imgs:
+                        card_info["image_url"] = imgs[0]
 
             name      = card_info.get("name", "Unknown")
             text      = card_info.get("text", "")
             image_url = card_info.get("image_url")
-            yield _e({"t": "log", "m": f"Gemini: {name}"})
+            yield _e({"t": "log", "m": f"AI: {name}"})
 
             # 3. download image (best-effort)
             photo_path = None
