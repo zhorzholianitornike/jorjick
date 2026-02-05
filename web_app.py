@@ -63,11 +63,11 @@ app.mount("/cards", StaticFiles(directory=str(CARDS)), name="cards")
 # Dashboard HTML  (single-page, no template engine needed)
 # ---------------------------------------------------------------------------
 DASHBOARD = """<!DOCTYPE html>
-<html lang="en">
+<html lang="ka">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>News Card Bot</title>
+<title>ამბის ქარდი ბოტი</title>
 <style>
   *            { margin:0; padding:0; box-sizing:border-box; }
   body         { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -146,55 +146,55 @@ DASHBOARD = """<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <h1>News Card Bot</h1>
-  <p class="sub">BBC / CNN style news graphics — web &amp; Telegram</p>
+  <h1>ამბის ქარდი ბოტი</h1>
+  <p class="sub">BBC / CNN სტილი ამბი — ვები &amp; Telegram</p>
 
   <div class="stats">
     <div class="stat">
       <div class="lbl">Telegram</div>
-      <div class="val green" id="s-bot">● Running</div>
+      <div class="val green" id="s-bot">● გამდი</div>
     </div>
     <div class="stat">
-      <div class="lbl">Cards generated</div>
+      <div class="lbl">შექდილი ქარდი</div>
       <div class="val" id="s-count">0</div>
     </div>
   </div>
 
   <!-- generate form -->
   <div class="panel">
-    <h2>Generate a card</h2>
+    <h2>ქარდი შექდი</h2>
 
     <div class="drop" id="drop">
       <div class="ico">📷</div>
-      <p>Click or drag &amp; drop a photo</p>
+      <p>ფოტო ატვირთი</p>
       <input type="file" id="fi" accept="image/*" style="display:none">
       <img id="prev" alt="">
     </div>
 
     <div class="row">
-      <div class="g"><label>Name</label>
+      <div class="g"><label>სახელი</label>
         <input id="inp-name" placeholder="ირაკლი კობახიძე">
       </div>
     </div>
     <div class="row">
-      <div class="g"><label>Text</label>
+      <div class="g"><label>ტექსტი</label>
         <textarea id="inp-text" placeholder="ტექსტი …"></textarea>
       </div>
     </div>
 
-    <button class="btn" id="btn-gen" onclick="gen()">Generate Card</button>
+    <button class="btn" id="btn-gen" onclick="gen()">ქარდი შექდი</button>
     <div class="spin" id="spin"></div>
 
     <div class="result" id="res">
       <img id="res-img" alt="">
       <br>
-      <a class="dl" id="res-dl" href="" download="card.jpg">⬇ Download</a>
+      <a class="dl" id="res-dl" href="" download="card.jpg">⬇ ჩამტვირთი</a>
     </div>
   </div>
 
   <!-- history -->
   <div class="history">
-    <h2>Recent cards</h2>
+    <h2>ამდი ქარდი</h2>
     <div class="hgrid" id="hgrid"></div>
   </div>
 </div>
@@ -229,7 +229,7 @@ DASHBOARD = """<!DOCTYPE html>
   window.gen = async function() {
     const name = document.getElementById('inp-name').value.trim();
     const text = document.getElementById('inp-text').value.trim();
-    if (!file || !name || !text) { toast('Photo, name and text are required.'); return; }
+    if (!file || !name || !text) { toast('ფოტო, სახელი და ტექსტი!'); return; }
 
     document.getElementById('btn-gen').disabled = true;
     document.getElementById('spin').style.display = 'block';
@@ -248,8 +248,8 @@ DASHBOARD = """<!DOCTYPE html>
         document.getElementById('res-dl').href = data.card_url;
         document.getElementById('res').style.display = 'block';
         loadHistory();
-      } else { toast('Error: ' + (data.error || 'unknown')); }
-    } catch(e) { toast('Network error: ' + e.message); }
+      } else { toast('შეცდი: ' + (data.error || 'unknown')); }
+    } catch(e) { toast('ნეტვერი შეცდი: ' + e.message); }
 
     document.getElementById('btn-gen').disabled = false;
     document.getElementById('spin').style.display = 'none';
