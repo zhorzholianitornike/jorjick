@@ -65,11 +65,11 @@ app.mount("/cards", StaticFiles(directory=str(CARDS)), name="cards")
 # Dashboard HTML  (single-page, no template engine needed)
 # ---------------------------------------------------------------------------
 DASHBOARD = """<!DOCTYPE html>
-<html lang="ka">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ამბის ქარდი ბოტი</title>
+<title>News Card Bot</title>
 <style>
   *            { margin:0; padding:0; box-sizing:border-box; }
   body         { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -148,74 +148,74 @@ DASHBOARD = """<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <h1>ამბის ქარდი ბოტი</h1>
-  <p class="sub">BBC / CNN სტილი ამბი — ვები &amp; Telegram</p>
+  <h1>News Card Bot</h1>
+  <p class="sub">BBC / CNN style news cards — Web &amp; Telegram</p>
 
   <div class="stats">
     <div class="stat">
       <div class="lbl">Telegram</div>
-      <div class="val green" id="s-bot">● გამდი</div>
+      <div class="val green" id="s-bot">● Running</div>
     </div>
     <div class="stat">
-      <div class="lbl">შექდილი ქარდი</div>
+      <div class="lbl">Cards Created</div>
       <div class="val" id="s-count">0</div>
     </div>
   </div>
 
   <!-- generate form -->
   <div class="panel">
-    <h2>ქარდი შექდი</h2>
+    <h2>Create Card</h2>
 
     <div class="drop" id="drop">
       <div class="ico">📷</div>
-      <p>ფოტო ატვირთი</p>
+      <p>Upload Photo</p>
       <input type="file" id="fi" accept="image/*" style="display:none">
       <img id="prev" alt="">
     </div>
 
     <div class="row">
-      <div class="g"><label>სახელი</label>
-        <input id="inp-name" placeholder="ირაკლი კობახიძე">
+      <div class="g"><label>Name</label>
+        <input id="inp-name" placeholder="John Doe">
       </div>
     </div>
     <div class="row">
-      <div class="g"><label>ტექსტი</label>
-        <textarea id="inp-text" placeholder="ტექსტი …"></textarea>
+      <div class="g"><label>Text</label>
+        <textarea id="inp-text" placeholder="Enter text..."></textarea>
       </div>
     </div>
 
-    <button class="btn" id="btn-gen" onclick="gen()">ქარდი შექდი</button>
+    <button class="btn" id="btn-gen" onclick="gen()">Generate Card</button>
     <div class="spin" id="spin"></div>
 
     <div class="result" id="res">
       <img id="res-img" alt="">
       <br>
-      <a class="dl" id="res-dl" href="" download="card.jpg">⬇ ჩამტვირთი</a>
+      <a class="dl" id="res-dl" href="" download="card.jpg">⬇ Download</a>
     </div>
   </div>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>ავტო ქარდი <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily ძიება → Gemini → ქარდი → Facebook</p>
+    <h2>Auto Card <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini AI → Card → Facebook</p>
     <div class="row">
-      <div class="g"><label>თემა</label>
-        <input id="inp-theme" placeholder="ქართველი ამბი">
+      <div class="g"><label>Topic</label>
+        <input id="inp-theme" placeholder="AI news, politics, sports...">
       </div>
     </div>
-    <button class="btn" id="btn-auto" onclick="autoGen()">გამდი</button>
+    <button class="btn" id="btn-auto" onclick="autoGen()">Generate</button>
     <div class="spin" id="spin-auto"></div>
     <div class="result" id="res-auto">
       <img id="res-auto-img" alt="">
       <br>
-      <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ ჩამტვირთი</a>
+      <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ Download</a>
     </div>
     <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
   </div>
 
   <!-- history -->
   <div class="history">
-    <h2>ამდი ქარდი</h2>
+    <h2>Recent Cards</h2>
     <div class="hgrid" id="hgrid"></div>
   </div>
 </div>
@@ -251,7 +251,7 @@ DASHBOARD = """<!DOCTYPE html>
   window.gen = async function() {
     const name = document.getElementById('inp-name').value.trim();
     const text = document.getElementById('inp-text').value.trim();
-    if (!file || !name || !text) { toast('ფოტო, სახელი და ტექსტი!'); return; }
+    if (!file || !name || !text) { toast('Photo, name and text required!'); return; }
 
     document.getElementById('btn-gen').disabled = true;
     document.getElementById('spin').style.display = 'block';
@@ -270,8 +270,8 @@ DASHBOARD = """<!DOCTYPE html>
         document.getElementById('res-dl').href = data.card_url;
         document.getElementById('res').style.display = 'block';
         loadHistory();
-      } else { toast('შეცდი: ' + (data.error || 'unknown')); }
-    } catch(e) { toast('ნეტვერი შეცდი: ' + e.message); }
+      } else { toast('Error: ' + (data.error || 'unknown')); }
+    } catch(e) { toast('Network error: ' + e.message); }
 
     document.getElementById('btn-gen').disabled = false;
     document.getElementById('spin').style.display = 'none';
@@ -280,7 +280,7 @@ DASHBOARD = """<!DOCTYPE html>
   // ── auto-generate (SSE stream) ────────────────────────────────────
   window.autoGen = async function() {
     const theme = document.getElementById('inp-theme').value.trim();
-    if (!theme) { toast('თემა!'); return; }
+    if (!theme) { toast('Topic required!'); return; }
 
     const btn   = document.getElementById('btn-auto');
     const spin  = document.getElementById('spin-auto');
@@ -288,7 +288,7 @@ DASHBOARD = """<!DOCTYPE html>
     const resEl = document.getElementById('res-auto');
 
     btn.disabled     = true;
-    btn.textContent  = 'დამდი…';
+    btn.textContent  = 'Processing...';
     spin.style.display  = 'block';
     resEl.style.display = 'none';
     logEl.innerHTML     = '';
@@ -316,9 +316,9 @@ DASHBOARD = """<!DOCTYPE html>
           try {
             const evt = JSON.parse(line.slice(6));
             if      (evt.t === 'log')  { logEl.innerHTML += '<span style="color:#94a3b8">· ' + esc(evt.m) + '</span><br>'; }
-            else if (evt.t === 'err')  { logEl.innerHTML += '<span style="color:#ef4444">✕ ' + esc(evt.m) + '</span><br>'; toast('შეცდი: ' + evt.m); }
+            else if (evt.t === 'err')  { logEl.innerHTML += '<span style="color:#ef4444">✕ ' + esc(evt.m) + '</span><br>'; toast('Error: ' + evt.m); }
             else if (evt.t === 'done') {
-              logEl.innerHTML += '<span style="color:#4ade80">✓ ქარდი შექდი</span><br>';
+              logEl.innerHTML += '<span style="color:#4ade80">✓ Card created</span><br>';
               document.getElementById('res-auto-img').src  = evt.card_url;
               document.getElementById('res-auto-dl').href  = evt.card_url;
               resEl.style.display = 'block';
@@ -329,12 +329,12 @@ DASHBOARD = """<!DOCTYPE html>
         logEl.scrollTop = logEl.scrollHeight;
       }
     } catch(e) {
-      logEl.innerHTML += '<span style="color:#ef4444">✕ ნეტვერი შეცდი: ' + esc(e.message) + '</span><br>';
-      toast('ნეტვერი შეცდი: ' + e.message);
+      logEl.innerHTML += '<span style="color:#ef4444">✕ Network error: ' + esc(e.message) + '</span><br>';
+      toast('Network error: ' + e.message);
     }
 
     btn.disabled    = false;
-    btn.textContent = 'გამდი';
+    btn.textContent = 'Generate';
     spin.style.display = 'none';
   };
 
@@ -366,7 +366,7 @@ DASHBOARD = """<!DOCTYPE html>
     if (miss.length) {
       document.getElementById('auto-log').innerHTML =
         '<span style="color:#f59e0b">⚠ Railway env vars missing: ' + miss.join(', ') +
-        ' — ავტ ქარდი შეფერდა</span>';
+        ' — Auto card disabled</span>';
     }
   });
 
@@ -446,21 +446,21 @@ async def api_auto_generate(theme: str = Form(...)):
 
         try:
             # 1. Tavily search
-            yield _e({"t": "log", "m": f'ამბი ძიება: "{theme}"'})
+            yield _e({"t": "log", "m": f'Searching: "{theme}"'})
             tavily_res = await asyncio.to_thread(search_tavily, theme, 5)
             if "error" in tavily_res:
                 yield _e({"t": "err", "m": tavily_res["error"]})
                 return
             n_res = len(tavily_res.get("results", []))
             n_img = len(tavily_res.get("images",  []))
-            yield _e({"t": "log", "m": f"შედეგი: {n_res} ამბი, {n_img} ფოტო"})
+            yield _e({"t": "log", "m": f"Found: {n_res} articles, {n_img} images"})
 
             # 2. AI picks the best story  (Gemini first, Claude/Kimi fallback)
-            yield _e({"t": "log", "m": "Gemini ამბი ვიჯერი…"})
+            yield _e({"t": "log", "m": "Gemini picking story..."})
             card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
             if "error" in card_info:
                 # Gemini failed (429 quota, key missing, …) → try Claude / Kimi
-                yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi…"})
+                yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi..."})
                 card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
                 if "error" in card_info:
                     yield _e({"t": "err", "m": card_info["error"]})
@@ -476,41 +476,43 @@ async def api_auto_generate(theme: str = Form(...)):
             image_url = card_info.get("image_url")
             yield _e({"t": "log", "m": f"AI: {name}"})
 
-            # 3. image: Gemini Imagen → download fallback → placeholder
-            photo_path = None
-            img_prompt = (
-                f"Professional news photograph about: {name}. {text} "
-                "Realistic photojournalism style. No text or watermarks."
-            )
-            yield _e({"t": "log", "m": "Gemini ფოტო გამდი…"})
-            photo_path = await asyncio.to_thread(
-                _generate_image_gemini, img_prompt, f"temp/auto_{card_id}.jpg"
-            )
-            if photo_path:
-                yield _e({"t": "log", "m": "ფოტ: Gemini OK"})
-            elif image_url:
-                yield _e({"t": "log", "m": "ფოტ: Gemini ჩამიდა — ჩამტვირთი…"})
-                photo_path = await asyncio.to_thread(
-                    download_image, image_url, f"temp/auto_{card_id}.jpg"
-                )
-                yield _e({"t": "log", "m": f"ფოტ: {'OK' if photo_path else 'ჩამიდა'}"})
-
-            if not photo_path:
-                photo_path = await asyncio.to_thread(create_placeholder)
-                yield _e({"t": "log", "m": "ფოტ: placeholder"})
-
-            # 4. generate card
-            yield _e({"t": "log", "m": "ქარდი გამდი…"})
+            # 3. Generate complete news card with Gemini Imagen
             card_path = CARDS / f"{card_id}_auto.jpg"
-            await asyncio.to_thread(
-                generator.generate, photo_path, name, text, str(card_path)
+            card_prompt = (
+                f"Professional BBC/CNN style news card image. "
+                f"Dark gradient background. "
+                f"Headline: {name}. "
+                f"Subtext: {text}. "
+                f"Modern news graphics design. Red accent color. "
+                f"1080x1350 portrait format. High quality."
+            )
+            yield _e({"t": "log", "m": "Gemini generating card..."})
+            gen_path = await asyncio.to_thread(
+                _generate_image_gemini, card_prompt, str(card_path)
             )
 
-            # 5. Facebook upload in background
+            # Fallback: if Gemini fails, download image and use template
+            if not gen_path:
+                yield _e({"t": "log", "m": "Gemini failed, using template..."})
+                photo_path = None
+                if image_url:
+                    photo_path = await asyncio.to_thread(
+                        download_image, image_url, f"temp/auto_{card_id}.jpg"
+                    )
+                if not photo_path:
+                    photo_path = await asyncio.to_thread(create_placeholder)
+                    yield _e({"t": "log", "m": "Using placeholder image"})
+
+                yield _e({"t": "log", "m": "Generating card..."})
+                await asyncio.to_thread(
+                    generator.generate, photo_path, name, text, str(card_path)
+                )
+
+            # 4. Facebook upload in background
             asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
             card_url = f"/cards/{card_id}_auto.jpg"
             _add_history(name, card_url)
-            yield _e({"t": "log", "m": "Facebook ატვირთი…"})
+            yield _e({"t": "log", "m": "Uploading to Facebook..."})
             yield _e({"t": "done", "card_url": card_url, "name": name})
 
         except Exception as exc:

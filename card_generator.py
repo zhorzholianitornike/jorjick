@@ -25,8 +25,8 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # CARD SIZE (pixels)
 # ---------------------------------------------------------------------------
-CARD_W = 450
-CARD_H = 560
+CARD_W = 1080
+CARD_H = 1350
 
 # ---------------------------------------------------------------------------
 # HTML TEMPLATE
@@ -85,9 +85,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   .logo-container {{
     position: absolute;
-    top: 25px;
-    right: 25px;
-    width: 50px;
+    top: 60px;
+    right: 60px;
+    width: 120px;
     z-index: 10;
   }}
   .logo-container img {{ width: 100%; display: block; }}
@@ -95,7 +95,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .content {{
     position: relative;
     z-index: 10;
-    padding: 25px;
+    padding: 60px;
     padding-bottom: 0;
     color: #ffffff;
     display: flex;
@@ -110,16 +110,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }}
 
   .red-square {{
-    width: 12px;
-    height: 12px;
+    width: 28px;
+    height: 28px;
     background-color: #e60000;
-    margin-right: 10px;
+    margin-right: 24px;
     flex-shrink: 0;
-    margin-top: 2px;
+    margin-top: 5px;
   }}
 
   .name {{
-    font-size: 26px;
+    font-size: 62px;
     font-weight: 700;
     text-transform: uppercase;
     margin: 0;
@@ -129,7 +129,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   .line-container {{
     width: 100%;
-    height: 22px;
+    height: 52px;
     margin-top: 0px;
     margin-bottom: 0px;
     display: flex;
@@ -143,21 +143,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }}
 
   .description {{
-    font-size: 13px;
+    font-size: 32px;
     line-height: 1.35;
     margin: 0;
-    margin-top: 8px;
+    margin-top: 20px;
     color: #ffffff;
     text-transform: uppercase;
     opacity: 0.9;
   }}
 
   .bottom-branding-bar {{
-    height: 12px;
+    height: 28px;
     width: 100%;
     background-color: #e60000;
     z-index: 10;
-    margin-top: 15px;
+    margin-top: 36px;
   }}
 </style>
 </head>
