@@ -2183,16 +2183,22 @@ async def _run_telegram():
         action, news_id = parts[0].replace("news_", ""), parts[1]
         article = _pending_news.pop(news_id, None)
 
+        # Helper: edit caption (photo msg) or text (text msg)
+        async def _edit_msg(text, parse_mode="HTML"):
+            try:
+                await query.edit_message_caption(caption=text, parse_mode=parse_mode)
+            except Exception:
+                await query.edit_message_text(text=text, parse_mode=parse_mode)
+
         if not article:
-            await query.edit_message_text("⚠️ სიახლე ვერ მოიძებნა ან უკვე დამუშავებულია.")
+            await _edit_msg("⚠️ სიახლე ვერ მოიძებნა ან უკვე დამუშავებულია.")
             return
 
         if action == "approve":
-            await query.edit_message_text(
+            await _edit_msg(
                 f"✅ დადასტურებულია!\n\n"
                 f"<b>{article['title']}</b>\n\n"
-                f"⏳ ქარდი მზადდება და Facebook-ზე იტვირთება...",
-                parse_mode="HTML",
+                f"⏳ ქარდი მზადდება და Facebook-ზე იტვირთება..."
             )
 
             # Generate card and upload to Facebook in background
@@ -2244,10 +2250,9 @@ async def _run_telegram():
 
         elif action == "reject":
             _seen_news_urls.add(article["url"])
-            await query.edit_message_text(
+            await _edit_msg(
                 f"❌ გამოტოვებულია\n\n"
-                f"<s>{article['title']}</s>",
-                parse_mode="HTML",
+                f"<s>{article['title']}</s>"
             )
 
     tg = Application.builder().token(TELEGRAM_TOKEN).build()
