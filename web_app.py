@@ -148,11 +148,14 @@ DASHBOARD = """<!DOCTYPE html>
 
   /* photo library */
   .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; }
-  .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:8px; margin-bottom:16px; }
-  .lib-photo   { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; cursor:pointer;
+  .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
+  .lib-item    { text-align:center; cursor:pointer; }
+  .lib-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
                  border:2px solid transparent; transition:border-color .2s, transform .1s; }
-  .lib-photo:hover { border-color:#1e94b9; transform:scale(1.02); }
-  .lib-photo.selected { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
+  .lib-item:hover img { border-color:#1e94b9; transform:scale(1.02); }
+  .lib-item.selected img { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
+  .lib-item .lib-name { font-size:10px; color:#94a3b8; margin-top:4px; overflow:hidden;
+                 text-overflow:ellipsis; white-space:nowrap; }
   .lib-empty   { color:#64748b; font-size:12px; text-align:center; padding:20px;
                  background:#151620; border-radius:6px; }
   .or-divider  { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
@@ -281,30 +284,30 @@ DASHBOARD = """<!DOCTYPE html>
       }
       grid.innerHTML = '';
       photos.forEach(p => {
-        const img = document.createElement('img');
-        img.className = 'lib-photo';
-        img.src = p.url;
-        img.alt = p.name;
-        img.title = p.name;
-        img.onclick = () => selectLibPhoto(p.url, img);
-        grid.appendChild(img);
+        const item = document.createElement('div');
+        item.className = 'lib-item';
+        item.innerHTML = '<img src="'+p.url+'" alt="'+p.name+'"><div class="lib-name">'+p.name.replace(/_/g,' ')+'</div>';
+        item.onclick = () => selectLibPhoto(p.url, p.name, item);
+        grid.appendChild(item);
       });
     } catch(e) {
       console.error('Library load failed:', e);
     }
   }
 
-  function selectLibPhoto(url, imgEl) {
+  function selectLibPhoto(url, name, itemEl) {
     // clear previous selection
-    document.querySelectorAll('.lib-photo').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.lib-item').forEach(el => el.classList.remove('selected'));
     // clear file upload
     file = null;
     prev.src = '';
     prev.style.display = 'none';
     fi.value = '';
     // select this one
-    imgEl.classList.add('selected');
+    itemEl.classList.add('selected');
     libPhoto = url;
+    // auto-fill name field with photo name
+    document.getElementById('inp-name').value = name.replace(/_/g, ' ');
   }
 
   loadLibrary();
