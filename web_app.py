@@ -2025,6 +2025,106 @@ def _add_history(name: str, card_url: str):
 
 
 # ---------------------------------------------------------------------------
+# Google Sheet employee database
+# ---------------------------------------------------------------------------
+SHEET_ID = "15lWgliZOzTojrTOmO3LyM-T_CWhOc-e5C6ARXg6LVSI"
+_employee_cache: list[dict] = []
+_employee_cache_time: float = 0
+
+
+def _load_employees() -> list[dict]:
+    """Load employee data from Google Sheet (CSV export). Cached for 5 min."""
+    global _employee_cache, _employee_cache_time
+    import time, csv, io
+
+    now = time.time()
+    if _employee_cache and (now - _employee_cache_time) < 300:
+        return _employee_cache
+
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+
+        reader = csv.reader(io.StringIO(resp.text))
+        rows = list(reader)
+
+        # Find header row (contains "სახელი")
+        header_idx = 0
+        for i, row in enumerate(rows):
+            if any("სახელი" in cell for cell in row):
+                header_idx = i
+                break
+
+        employees = []
+        for row in rows[header_idx + 1:]:
+            if len(row) >= 4 and row[0].strip():
+                employees.append({
+                    "first_name": row[0].strip(),
+                    "last_name": row[1].strip(),
+                    "phone": row[2].strip(),
+                    "internal": row[3].strip(),
+                })
+
+        _employee_cache = employees
+        _employee_cache_time = now
+        print(f"[Sheet] Loaded {len(employees)} employees")
+        return employees
+
+    except Exception as exc:
+        print(f"[Sheet] Load failed: {exc}")
+        return _employee_cache  # return stale cache on error
+
+
+def _employee_lookup_openai(question: str) -> str:
+    """Use OpenAI to answer employee-related questions from Sheet data."""
+    from openai import OpenAI
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return "OPENAI_API_KEY არ არის დაყენებული."
+
+    employees = _load_employees()
+    if not employees:
+        return "თანამშრომლების ბაზა ცარიელია ან ვერ ჩაიტვირთა."
+
+    # Format employee data for context
+    emp_lines = []
+    for e in employees:
+        emp_lines.append(
+            f"- {e['first_name']} {e['last_name']}: "
+            f"მობილური: {e['phone']}, შიდა ნომერი: {e['internal']}"
+        )
+    emp_text = "\n".join(emp_lines)
+
+    try:
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "შენ ხარ რუსთავი 2-ის ასისტენტი. შენ გაქვს თანამშრომლების მონაცემთა ბაზა.\n"
+                        "უპასუხე მომხმარებლის კითხვას ქართულად, მხოლოდ ბაზაში არსებული ინფორმაციის საფუძველზე.\n"
+                        "თუ თანამშრომელი ვერ მოიძებნა, თქვი რომ ბაზაში ასეთი თანამშრომელი არ მოიძებნა.\n"
+                        "პასუხი იყოს მოკლე და კონკრეტული.\n\n"
+                        f"თანამშრომლების ბაზა:\n{emp_text}"
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            max_tokens=500,
+        )
+        return resp.choices[0].message.content or "პასუხი ვერ დაგენერირდა."
+
+    except Exception as exc:
+        print(f"[AI Lookup] Error: {exc}")
+        return f"შეცდომა: {exc}"
+
+
+# ---------------------------------------------------------------------------
 # interpressnews.ge scraper + auto-news state
 # ---------------------------------------------------------------------------
 _pending_news: dict = {}       # {news_id: {title, url, image_url, time}}
@@ -2446,6 +2546,21 @@ async def _run_telegram():
                 f"<s>{article['title']}</s>"
             )
 
+    # ── employee lookup via natural language ─────────────────────────
+    async def tg_employee_query(update: Update, ctx):
+        """Handle free-text messages — employee lookup via OpenAI."""
+        text = update.message.text.strip()
+        if not text or len(text) < 3:
+            return
+
+        await update.message.reply_text("🔍 ვეძებ...")
+
+        try:
+            answer = await asyncio.to_thread(_employee_lookup_openai, text)
+            await update.message.reply_text(answer)
+        except Exception as exc:
+            await update.message.reply_text(f"შეცდომა: {exc}")
+
     tg = Application.builder().token(TELEGRAM_TOKEN).build()
     tg.add_handler(CallbackQueryHandler(tg_news_callback, pattern=r"^news_"))
     tg.add_handler(CommandHandler("voice", tg_voice))
@@ -2457,6 +2572,8 @@ async def _run_telegram():
         },
         fallbacks=[CommandHandler("cancel", tg_cancel)],
     ))
+    # Free-text handler (lowest priority — after ConversationHandler)
+    tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, tg_employee_query))
 
     await tg.initialize()
     await tg.start()
