@@ -967,22 +967,41 @@ async def api_auto_generate(theme: str = Form(...)):
 def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
     """Auto-commit and push a file to GitHub. Returns True on success."""
     import subprocess
+    import os
+
+    # Skip git operations if not available (e.g., Railway without git)
     try:
+        result = subprocess.run(["git", "--version"], capture_output=True, timeout=5)
+        if result.returncode != 0:
+            print(f"[Git] ⚠ Git not available, skipping commit")
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print(f"[Git] ⚠ Git not found, skipping commit")
+        return False
+
+    try:
+        # Change to the git repository directory
+        repo_dir = os.path.dirname(os.path.abspath(__file__))
+
         # Add the specific file
-        subprocess.run(["git", "add", file_path], check=True, capture_output=True)
+        subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=repo_dir)
         # Commit with message
         subprocess.run(
             ["git", "commit", "-m", commit_message],
             check=True,
             capture_output=True,
-            text=True
+            text=True,
+            cwd=repo_dir
         )
         # Push to remote
-        subprocess.run(["git", "push"], check=True, capture_output=True)
+        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=repo_dir)
         print(f"[Git] ✓ {file_path} committed and pushed")
         return True
     except subprocess.CalledProcessError as e:
         print(f"[Git] ✗ Failed: {e}")
+        return False
+    except Exception as e:
+        print(f"[Git] ✗ Error: {e}")
         return False
 
 
