@@ -346,8 +346,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- voice generation panel -->
   <div class="panel">
-    <h2>3 — ხმოვანი გენერაცია 🎙️ <span style="font-size:11px;color:#64748b;font-weight:400">[Google Cloud TTS]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ქართული ტექსტი → Google TTS → MP3 Audio (უფასო 1M chars/თვე)</p>
+    <h2>3 — ხმოვანი გენერაცია 🎙️ <span style="font-size:11px;color:#64748b;font-weight:400">[Gemini TTS]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ქართული ტექსტი → Gemini TTS → WAV Audio</p>
 
     <div class="row">
       <div class="g"><label>ტექსტი (ქართულად)</label>
@@ -358,10 +358,10 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="row">
       <div class="g"><label>ხმა</label>
         <select id="sel-voice" style="width:100%; background:#151620; border:1px solid #2d3148; border-radius:7px; padding:9px 12px; color:#e2e8f0; font-size:14px;">
-          <option value="ka-GE-Standard-A">ქალი (Standard)</option>
-          <option value="ka-GE-Standard-B">მამაკაცი (Standard)</option>
-          <option value="ka-GE-Wavenet-A">ქალი (WaveNet - უკეთესი)</option>
-          <option value="ka-GE-Wavenet-B">მამაკაცი (WaveNet - უკეთესი)</option>
+          <option value="Kore">Kore (ქალი - მკაფიო)</option>
+          <option value="Puck">Puck (მამაკაცი - ენერგიული)</option>
+          <option value="Charon">Charon (მამაკაცი - ინფორმატიული)</option>
+          <option value="Fenrir">Fenrir (მამაკაცი - ექსპრესიული)</option>
         </select>
       </div>
     </div>
@@ -376,7 +376,7 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="result" id="res-voice">
       <audio id="audio-player" controls style="width:100%;max-width:400px;margin-top:16px;display:none;"></audio>
       <br>
-      <a class="dl" id="res-voice-dl" href="" download="voice.mp3" style="display:none;">⬇️ Download MP3</a>
+      <a class="dl" id="res-voice-dl" href="" download="voice.wav" style="display:none;">⬇️ Download Audio</a>
     </div>
   </div>
 
@@ -1066,9 +1066,9 @@ async def api_status():
 
 @app.post("/api/generate-voice")
 async def api_generate_voice(request: dict):
-    """Generate voice-over from Georgian text using Google Cloud TTS."""
+    """Generate voice-over from Georgian text using Gemini TTS."""
     text = request.get("text", "").strip()
-    voice_name = request.get("voice", "ka-GE-Standard-A")
+    voice_name = request.get("voice", "Kore")
 
     if not text:
         return JSONResponse(status_code=400, content={"error": "ტექსტი ცარიელია"})
@@ -1080,55 +1080,44 @@ async def api_generate_voice(request: dict):
     if not api_key:
         return JSONResponse(status_code=500, content={"error": "GEMINI_API_KEY არ არის დაყენებული"})
 
-    # Google Cloud TTS API endpoint
-    tts_url = "https://texttospeech.googleapis.com/v1/text:synthesize"
-
-    payload = {
-        "input": {"text": text},
-        "voice": {
-            "languageCode": "ka-GE",
-            "name": voice_name
-        },
-        "audioConfig": {
-            "audioEncoding": "MP3",
-            "speakingRate": 1.0,
-            "pitch": 0.0
-        }
-    }
-
     try:
-        resp = await asyncio.to_thread(
-            lambda: requests.post(
-                tts_url,
-                json=payload,
-                params={"key": api_key},
-                headers={"Content-Type": "application/json"},
-                timeout=30
+        from google import genai
+        from google.genai import types
+        import wave
+        import io
+
+        client = genai.Client(api_key=api_key)
+
+        response = await asyncio.to_thread(
+            lambda: client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=f"Read the following Georgian text naturally:\n{text}",
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice_name,
+                            )
+                        )
+                    ),
+                )
             )
         )
 
-        if resp.status_code != 200:
-            error_msg = resp.json().get("error", {}).get("message", "Unknown error")
-            return JSONResponse(status_code=500, content={"error": f"TTS API: {error_msg}"})
-
-        data = resp.json()
-        audio_content = data.get("audioContent")
-
-        if not audio_content:
+        audio_data = response.candidates[0].content.parts[0].inline_data.data
+        if not audio_data:
             return JSONResponse(status_code=500, content={"error": "Audio არ გენერირდა"})
 
-        # Decode base64 and save as MP3
-        import base64
-        audio_bytes = base64.b64decode(audio_content)
-
-        # Create voices directory if not exists
-        voices_dir = Path("voices")
-        voices_dir.mkdir(exist_ok=True)
-
-        # Generate unique filename
+        # Save as WAV
         voice_id = uuid.uuid4().hex[:8]
-        voice_file = voices_dir / f"voice_{voice_id}.mp3"
-        voice_file.write_bytes(audio_bytes)
+        voice_file = VOICES / f"voice_{voice_id}.wav"
+
+        with wave.open(str(voice_file), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(audio_data)
 
         return {
             "success": True,
