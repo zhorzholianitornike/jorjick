@@ -212,6 +212,7 @@ DASHBOARD = """<!DOCTYPE html>
   .toast       { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
                  background:#ef4444; color:#fff; padding:12px 22px; border-radius:8px;
                  font-size:14px; display:none; z-index:99; }
+  .toast.success { background:#16a34a; }
 
   /* photo library */
   .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; display:flex; align-items:center; justify-content:space-between; }
@@ -395,7 +396,7 @@ DASHBOARD = """<!DOCTYPE html>
       const r = await fetch('/api/upload-library', { method: 'POST', body: fd });
       const data = await r.json();
       if (data.success) {
-        toast('ფოტო ატვირთულია ბიბლიოთეკაში!');
+        toast('ფოტო ატვირთულია ბიბლიოთეკაში!', 'success');
         loadLibrary();  // reload library
         e.target.value = '';  // clear input
       } else {
@@ -432,7 +433,7 @@ DASHBOARD = """<!DOCTYPE html>
       const r = await fetch('/api/delete-library', { method: 'POST', body: fd });
       const data = await r.json();
       if (data.success) {
-        toast('ფოტო წაშლილია!');
+        toast('ფოტო წაშლილია!', 'success');
         loadLibrary();  // reload library
       } else {
         toast('შეცდომა: ' + (data.error || 'unknown'));
@@ -455,7 +456,7 @@ DASHBOARD = """<!DOCTYPE html>
       const r = await fetch('/api/rename-library', { method: 'POST', body: fd });
       const data = await r.json();
       if (data.success) {
-        toast('ფოტო გადარქმდა!');
+        toast('ფოტო გადარქმდა!', 'success');
         loadLibrary();  // reload library
       } else {
         toast('შეცდომა: ' + (data.error || 'unknown'));
@@ -522,11 +523,14 @@ DASHBOARD = """<!DOCTYPE html>
         // reload library to show newly uploaded photo
         if (file) {
           loadLibrary();
+          toast('ქარდი შეიქმნა და ფოტო შეინახა ბიბლიოთეკაში!', 'success');
           // clear upload preview
           file = null;
           prev.src = '';
           prev.style.display = 'none';
           fi.value = '';
+        } else {
+          toast('ქარდი შეიქმნა!', 'success');
         }
       } else { toast('Error: ' + (data.error || 'unknown')); }
     } catch(e) { toast('Network error: ' + e.message); }
@@ -654,7 +658,7 @@ DASHBOARD = """<!DOCTYPE html>
       if (data.success) {
         btn.className = 'btn-fb done';
         btn.textContent = '✓ Uploaded to Facebook';
-        toast('Card uploaded to Facebook!');
+        toast('Card uploaded to Facebook!', 'success');
       } else {
         btn.className = 'btn-fb fail';
         btn.textContent = '✕ Upload failed';
@@ -670,8 +674,9 @@ DASHBOARD = """<!DOCTYPE html>
   };
 
   // ── toast helper ──────────────────────────────────────────────────
-  window.toast = function(msg) {
+  window.toast = function(msg, type) {
     const t = document.getElementById('toast');
+    t.className = type === 'success' ? 'toast success' : 'toast';
     t.textContent = msg; t.style.display = 'block';
     setTimeout(() => t.style.display = 'none', 5000);
   };
@@ -702,6 +707,11 @@ async def api_generate(
 
     # determine photo source: upload or library
     if photo and photo.filename:
+        # Read upload bytes first (UploadFile can only be read once)
+        photo_bytes = await photo.read()
+        if not photo_bytes:
+            return JSONResponse(status_code=400, content={"error": "Uploaded file is empty"})
+
         # save uploaded photo to library (photos/) folder to persist across redeployments
         import re
         safe_name = name.strip().replace(' ', '_')
@@ -713,6 +723,9 @@ async def api_generate(
         # determine file extension from uploaded file
         file_ext = Path(photo.filename).suffix or ".jpg"
 
+        # Ensure photos directory exists
+        PHOTOS.mkdir(exist_ok=True)
+
         # ensure unique filename
         photo_path = PHOTOS / f"{safe_name}{file_ext}"
         counter = 1
@@ -720,8 +733,8 @@ async def api_generate(
             photo_path = PHOTOS / f"{safe_name}_{counter}{file_ext}"
             counter += 1
 
-        # save to photos/ folder (persistent)
-        photo_path.write_bytes(await photo.read())
+        # save to photos/ folder — persists regardless of card generation outcome
+        photo_path.write_bytes(photo_bytes)
 
         # Auto-commit and push new photo to GitHub
         asyncio.create_task(asyncio.to_thread(
@@ -730,27 +743,20 @@ async def api_generate(
             f"ფოტო დაემატა (ქარდიდან): {photo_path.name}"
         ))
 
-        use_lib = False
     elif lib_photo:
         # use library photo (lib_photo is like /photos/person.jpg)
         filename = lib_photo.replace("/photos/", "")
-        lib_path = PHOTOS / filename
-        if not lib_path.exists():
+        photo_path = PHOTOS / filename
+        if not photo_path.exists():
             return JSONResponse(status_code=400, content={"error": "Library photo not found"})
-        photo_path = lib_path
-        use_lib = True
     else:
         return JSONResponse(status_code=400, content={"error": "No photo provided"})
 
     try:
         generator.generate(str(photo_path), name, text, str(card_path))
     except Exception as exc:
-        if not use_lib:
-            photo_path.unlink(missing_ok=True)
+        # Photo stays in library even if card generation fails
         return JSONResponse(status_code=500, content={"error": str(exc)})
-
-    # Don't delete the photo — it's now in the photos/ library!
-    # (only delete if generation failed, handled in except block above)
 
     # No auto-upload — user clicks "Upload to Facebook" button
     _add_history(name, f"/cards/{card_id}_card.jpg")
@@ -790,6 +796,14 @@ async def api_upload_library(photo: UploadFile = File(...)):
     safe_name = photo.filename.replace(' ', '_')
     safe_name = re.sub(r'[<>:"/\\|?*]', '', safe_name)  # remove only unsafe chars
 
+    # Read upload bytes up-front and validate
+    photo_bytes = await photo.read()
+    if not photo_bytes:
+        return JSONResponse(status_code=400, content={"error": "Uploaded file is empty"})
+
+    # Ensure photos directory exists
+    PHOTOS.mkdir(exist_ok=True)
+
     # ensure unique filename
     photo_path = PHOTOS / safe_name
     counter = 1
@@ -800,7 +814,7 @@ async def api_upload_library(photo: UploadFile = File(...)):
         counter += 1
 
     try:
-        photo_path.write_bytes(await photo.read())
+        photo_path.write_bytes(photo_bytes)
 
         # Auto-commit and push to GitHub
         await asyncio.to_thread(
