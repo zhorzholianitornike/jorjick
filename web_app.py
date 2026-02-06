@@ -669,6 +669,10 @@ DASHBOARD = """<!DOCTYPE html>
       const fd = new FormData();
       fd.append('card_url', cardUrl);
       fd.append('name', name);
+      // send article as caption for Facebook
+      if (isAuto && lastAutoArticle) {
+        fd.append('caption', name + '\\n\\n' + lastAutoArticle);
+      }
       const r = await fetch('/api/upload-facebook', { method:'POST', body:fd });
       const data = await r.json();
       if (data.success) {
@@ -956,6 +960,7 @@ async def api_status():
 async def api_upload_facebook(
     card_url: str = Form(...),
     name: str = Form(...),
+    caption: Optional[str] = Form(None),
 ):
     """Upload a generated card to Facebook (user-triggered)."""
     # card_url is like /cards/abc123_card.jpg — convert to file path
@@ -968,9 +973,12 @@ async def api_upload_facebook(
     if not card_path.exists():
         return JSONResponse(status_code=404, content={"success": False, "error": "Card not found"})
 
+    # Use article as caption, fallback to name
+    fb_caption = caption if caption else name
+
     # Upload to Facebook + notify via Telegram
     try:
-        await asyncio.to_thread(_upload_and_notify, str(card_path), name)
+        await asyncio.to_thread(_upload_and_notify, str(card_path), name, fb_caption)
         return {"success": True}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
@@ -1195,10 +1203,11 @@ def _send_telegram(text: str):
         print(f"[TG] Notification failed: {exc}")
 
 
-def _upload_and_notify(card_path: str, name: str):
+def _upload_and_notify(card_path: str, name: str, caption: str = ""):
     """Upload to Facebook, then notify via Telegram. Meant to run in a thread."""
     now     = datetime.now(TBILISI).strftime("%H:%M  %d/%m/%Y")
-    success = post_photo(card_path, name)
+    fb_caption = caption if caption else name
+    success = post_photo(card_path, fb_caption)
     if success:
         _send_telegram(f"ქარდი ატვირთულია\nქარდის სახელი: {name}\n{now}")
     else:
