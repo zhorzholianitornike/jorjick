@@ -314,8 +314,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + OpenAI Thinking]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → OpenAI o3-mini (Thinking) → Card → Facebook</p>
+    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini Thinking]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 2.0 Flash (Thinking) → Card → Facebook</p>
     <div class="row">
       <div class="g"><label>თემა</label>
         <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
@@ -1006,33 +1006,37 @@ async def api_auto_generate(theme: str = Form(...)):
             n_img = len(tavily_res.get("images",  []))
             yield _e({"t": "log", "m": f"Found: {n_res} articles, {n_img} images"})
 
-            # 2. AI picks the best story  (OpenAI Thinking → Gemini → Claude/Kimi)
+            # 2. AI picks the best story  (Gemini → OpenAI Thinking → Claude/Kimi)
             card_info = None
 
-            # Try OpenAI Thinking first (best copywriting)
-            if os.environ.get("OPENAI_API_KEY"):
-                yield _e({"t": "log", "m": "OpenAI o3-mini thinking..."})
-                card_info = await asyncio.to_thread(_pick_openai_thinking, tavily_res)
-                if "error" in card_info:
-                    yield _e({"t": "log", "m": f"OpenAI: {card_info['error'][:60]} — fallback Gemini..."})
-                    card_info = None
-
-            # Fallback: Gemini
-            if card_info is None:
-                yield _e({"t": "log", "m": "Gemini picking story..."})
+            # Try Gemini first (best Georgian copywriting)
+            if os.environ.get("GEMINI_API_KEY"):
+                yield _e({"t": "log", "m": "Gemini 2.0 Flash thinking..."})
                 card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
                 if "error" in card_info:
-                    # Gemini failed → try Claude / Kimi
-                    yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi..."})
-                    card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
-                    if "error" in card_info:
-                        yield _e({"t": "err", "m": card_info["error"]})
-                        return
-                    # if fallback didn't pick an image, grab the first Tavily image
-                    if not card_info.get("image_url"):
-                        imgs = tavily_res.get("images", [])
-                        if imgs:
-                            card_info["image_url"] = imgs[0]
+                    yield _e({"t": "log", "m": f"Gemini: {card_info['error'][:60]} — fallback OpenAI..."})
+                    card_info = None
+
+            # Fallback: OpenAI o3-mini
+            if card_info is None and os.environ.get("OPENAI_API_KEY"):
+                yield _e({"t": "log", "m": "OpenAI o3-mini fallback..."})
+                card_info = await asyncio.to_thread(_pick_openai_thinking, tavily_res)
+                if "error" in card_info:
+                    yield _e({"t": "log", "m": f"OpenAI: {card_info['error'][:60]} — fallback Agent..."})
+                    card_info = None
+
+            # Last resort: Claude/Kimi Agent
+            if card_info is None:
+                yield _e({"t": "log", "m": "Agent system fallback..."})
+                card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
+                if "error" in card_info:
+                    yield _e({"t": "err", "m": card_info["error"]})
+                    return
+                # if fallback didn't pick an image, grab the first Tavily image
+                if not card_info.get("image_url"):
+                    imgs = tavily_res.get("images", [])
+                    if imgs:
+                        card_info["image_url"] = imgs[0]
 
             name      = card_info.get("name", "Unknown")
             text      = card_info.get("text", "")
