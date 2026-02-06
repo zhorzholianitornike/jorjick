@@ -969,9 +969,14 @@ def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
     import subprocess
     import os
 
-    # Skip git operations if not available (e.g., Railway without git)
+    # Disable git operations on Railway (ephemeral filesystem + no credentials)
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        print(f"[Git] ⚠ Railway detected - skipping git operations (use Railway Volumes instead)")
+        return False
+
+    # Skip git operations if not available
     try:
-        result = subprocess.run(["git", "--version"], capture_output=True, timeout=5)
+        result = subprocess.run(["git", "--version"], capture_output=True, timeout=2)
         if result.returncode != 0:
             print(f"[Git] ⚠ Git not available, skipping commit")
             return False
@@ -979,26 +984,34 @@ def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
         print(f"[Git] ⚠ Git not found, skipping commit")
         return False
 
-    try:
-        # Change to the git repository directory
-        repo_dir = os.path.dirname(os.path.abspath(__file__))
+    # Check if we're in a git repository
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    git_dir = os.path.join(repo_dir, ".git")
+    if not os.path.exists(git_dir):
+        print(f"[Git] ⚠ Not a git repository, skipping commit")
+        return False
 
+    try:
         # Add the specific file
-        subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=repo_dir)
+        subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=repo_dir, timeout=5)
         # Commit with message
         subprocess.run(
             ["git", "commit", "-m", commit_message],
             check=True,
             capture_output=True,
             text=True,
-            cwd=repo_dir
+            cwd=repo_dir,
+            timeout=5
         )
         # Push to remote
-        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=repo_dir)
+        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=repo_dir, timeout=10)
         print(f"[Git] ✓ {file_path} committed and pushed")
         return True
     except subprocess.CalledProcessError as e:
         print(f"[Git] ✗ Failed: {e}")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"[Git] ✗ Timeout - git operation too slow")
         return False
     except Exception as e:
         print(f"[Git] ✗ Error: {e}")
