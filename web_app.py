@@ -358,9 +358,9 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="row">
       <div class="g"><label>ხმა</label>
         <select id="sel-voice" style="width:100%; background:#151620; border:1px solid #2d3148; border-radius:7px; padding:9px 12px; color:#e2e8f0; font-size:14px;">
+          <option value="Charon">Charon (მამაკაცი - ინფორმატიული)</option>
           <option value="Kore">Kore (ქალი - მკაფიო)</option>
           <option value="Puck">Puck (მამაკაცი - ენერგიული)</option>
-          <option value="Charon">Charon (მამაკაცი - ინფორმატიული)</option>
           <option value="Fenrir">Fenrir (მამაკაცი - ექსპრესიული)</option>
         </select>
       </div>
@@ -1068,7 +1068,7 @@ async def api_status():
 async def api_generate_voice(request: dict):
     """Generate voice-over from Georgian text using Gemini TTS."""
     text = request.get("text", "").strip()
-    voice_name = request.get("voice", "Kore")
+    voice_name = request.get("voice", "Charon")
 
     if not text:
         return JSONResponse(status_code=400, content={"error": "ტექსტი ცარიელია"})
@@ -1731,7 +1731,79 @@ async def _run_telegram():
         await update.message.reply_text("Cancelled.")
         return ConversationHandler.END
 
+    # ── voice generation via /voice command ──────────────────────────
+    async def tg_voice(update: Update, ctx):
+        """Handle /voice command — generate TTS from text."""
+        text = update.message.text.replace("/voice", "", 1).strip()
+        if not text:
+            await update.message.reply_text(
+                "🎙️ ხმოვანი გენერაცია\n\n"
+                "გამოყენება:\n"
+                "/voice შენი ტექსტი აქ\n\n"
+                "მაგალითი:\n"
+                "/voice გამარჯობა, ეს არის ტესტი"
+            )
+            return
+
+        if len(text) > 5000:
+            await update.message.reply_text("ტექსტი ძალიან გრძელია (მაქს 5000 სიმბოლო)")
+            return
+
+        await update.message.reply_text("🎙️ ხმა გენერირდება, დაელოდეთ...")
+
+        try:
+            from google import genai
+            from google.genai import types
+            import wave
+
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                await update.message.reply_text("GEMINI_API_KEY არ არის დაყენებული")
+                return
+
+            client = genai.Client(api_key=api_key)
+
+            response = await asyncio.to_thread(
+                lambda: client.models.generate_content(
+                    model="gemini-2.5-flash-preview-tts",
+                    contents=f"Read the following Georgian text naturally:\n{text}",
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name="Charon",
+                                )
+                            )
+                        ),
+                    )
+                )
+            )
+
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            if not audio_data:
+                await update.message.reply_text("Audio ვერ გენერირდა")
+                return
+
+            # Save as WAV
+            voice_id = uuid.uuid4().hex[:8]
+            voice_file = VOICES / f"tg_voice_{voice_id}.wav"
+
+            with wave.open(str(voice_file), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(24000)
+                wf.writeframes(audio_data)
+
+            # Send audio file
+            with open(voice_file, "rb") as af:
+                await update.message.reply_voice(voice=af)
+
+        except Exception as exc:
+            await update.message.reply_text(f"შეცდომა: {exc}")
+
     tg = Application.builder().token(TELEGRAM_TOKEN).build()
+    tg.add_handler(CommandHandler("voice", tg_voice))
     tg.add_handler(ConversationHandler(
         entry_points=[CommandHandler("start", tg_start)],
         states={
@@ -1788,7 +1860,7 @@ async def _hourly_status_report():
                 f"⏱ აქტიურია: {hours}სთ {minutes}წთ\n"
                 f"🃏 შექმნილი ქარდები: {len(history)}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🤖 რუსთავი 2-ის ბოტი აქტიურია და მზადყოფნაშია!"
+                f"🤖 რუსთავი 2-ის აგენტი აქტიურია და მზადყოფნაშია!"
             )
 
             await asyncio.to_thread(_send_telegram, report)
