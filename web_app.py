@@ -45,8 +45,10 @@ TBILISI = timezone(timedelta(hours=4))   # Asia/Tbilisi — UTC+4, no DST
 
 UPLOADS = Path("uploads")
 CARDS   = Path("cards")
+PHOTOS  = Path("photos")   # photo library folder
 UPLOADS.mkdir(exist_ok=True)
 CARDS.mkdir(exist_ok=True)
+PHOTOS.mkdir(exist_ok=True)
 
 logo = "logo.png" if os.path.exists("logo.png") else None
 generator = CardGenerator(logo_path=logo)
@@ -59,6 +61,7 @@ history: list[dict] = []
 # ---------------------------------------------------------------------------
 app = FastAPI()
 app.mount("/cards", StaticFiles(directory=str(CARDS)), name="cards")
+app.mount("/photos", StaticFiles(directory=str(PHOTOS)), name="photos")
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +146,17 @@ DASHBOARD = """<!DOCTYPE html>
                  background:#ef4444; color:#fff; padding:12px 22px; border-radius:8px;
                  font-size:14px; display:none; z-index:99; }
 
+  /* photo library */
+  .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; }
+  .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:8px; margin-bottom:16px; }
+  .lib-photo   { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; cursor:pointer;
+                 border:2px solid transparent; transition:border-color .2s, transform .1s; }
+  .lib-photo:hover { border-color:#1e94b9; transform:scale(1.02); }
+  .lib-photo.selected { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
+  .lib-empty   { color:#64748b; font-size:12px; text-align:center; padding:20px;
+                 background:#151620; border-radius:6px; }
+  .or-divider  { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
+
   /* history grid */
   .history h2  { font-size:16px; color:#fff; margin-bottom:14px; }
   .hgrid       { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
@@ -173,27 +187,34 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- generate form -->
   <div class="panel">
-    <h2>Create Card</h2>
+    <h2>1 — ქარდის შექმნა</h2>
+
+    <div class="lib-label">📁 ფოტო ბიბლიოთეკა</div>
+    <div class="lib-grid" id="lib-grid">
+      <div class="lib-empty">ფოტოები არ არის</div>
+    </div>
+
+    <div class="or-divider">— ან ატვირთე ახალი —</div>
 
     <div class="drop" id="drop">
       <div class="ico">📷</div>
-      <p>Upload Photo</p>
+      <p>ფოტოს ატვირთვა</p>
       <input type="file" id="fi" accept="image/*" style="display:none">
       <img id="prev" alt="">
     </div>
 
     <div class="row">
-      <div class="g"><label>Name</label>
-        <input id="inp-name" placeholder="John Doe">
+      <div class="g"><label>სახელი</label>
+        <input id="inp-name" placeholder="სახელი გვარი">
       </div>
     </div>
     <div class="row">
-      <div class="g"><label>Text</label>
-        <textarea id="inp-text" placeholder="Enter text..."></textarea>
+      <div class="g"><label>ტექსტი</label>
+        <textarea id="inp-text" placeholder="ტექსტი..."></textarea>
       </div>
     </div>
 
-    <button class="btn" id="btn-gen" onclick="gen()">Generate Card</button>
+    <button class="btn" id="btn-gen" onclick="gen()">ქარდის გენერაცია</button>
     <div class="spin" id="spin"></div>
 
     <div class="result" id="res">
@@ -207,14 +228,14 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>Auto Card <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
+    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
     <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini AI → Card → Facebook</p>
     <div class="row">
-      <div class="g"><label>Topic</label>
-        <input id="inp-theme" placeholder="AI news, politics, sports...">
+      <div class="g"><label>თემა</label>
+        <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
       </div>
     </div>
-    <button class="btn" id="btn-auto" onclick="autoGen()">Generate</button>
+    <button class="btn" id="btn-auto" onclick="autoGen()">გენერაცია</button>
     <div class="spin" id="spin-auto"></div>
     <div class="result" id="res-auto">
       <img id="res-auto-img" alt="">
@@ -241,11 +262,52 @@ DASHBOARD = """<!DOCTYPE html>
   const fi     = document.getElementById('fi');
   const prev   = document.getElementById('prev');
   let   file   = null;
+  let   libPhoto = null;     // selected library photo path (e.g., /photos/person1.jpg)
   let   lastCardUrl  = '';   // store last generated card URL
   let   lastCardName = '';   // store last generated card name
   let   lastAutoUrl  = '';   // store last auto-generated card URL
   let   lastAutoName = '';   // store last auto-generated card name
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── photo library ──────────────────────────────────────────────────
+  async function loadLibrary() {
+    try {
+      const res = await fetch('/api/library');
+      const photos = await res.json();
+      const grid = document.getElementById('lib-grid');
+      if (photos.length === 0) {
+        grid.innerHTML = '<div class="lib-empty">ფოტოები არ არის<br><small>photos/ ფოლდერში ჩაამატე</small></div>';
+        return;
+      }
+      grid.innerHTML = '';
+      photos.forEach(p => {
+        const img = document.createElement('img');
+        img.className = 'lib-photo';
+        img.src = p.url;
+        img.alt = p.name;
+        img.title = p.name;
+        img.onclick = () => selectLibPhoto(p.url, img);
+        grid.appendChild(img);
+      });
+    } catch(e) {
+      console.error('Library load failed:', e);
+    }
+  }
+
+  function selectLibPhoto(url, imgEl) {
+    // clear previous selection
+    document.querySelectorAll('.lib-photo').forEach(el => el.classList.remove('selected'));
+    // clear file upload
+    file = null;
+    prev.src = '';
+    prev.style.display = 'none';
+    fi.value = '';
+    // select this one
+    imgEl.classList.add('selected');
+    libPhoto = url;
+  }
+
+  loadLibrary();
 
   // ── upload wiring ─────────────────────────────────────────────────
   drop.addEventListener('click',    () => fi.click());
@@ -259,6 +321,9 @@ DASHBOARD = """<!DOCTYPE html>
 
   function pick(f) {
     file = f;
+    // clear library selection
+    libPhoto = null;
+    document.querySelectorAll('.lib-photo').forEach(el => el.classList.remove('selected'));
     const r = new FileReader();
     r.onload = () => { prev.src = r.result; prev.style.display = 'block'; };
     r.readAsDataURL(f);
@@ -268,14 +333,18 @@ DASHBOARD = """<!DOCTYPE html>
   window.gen = async function() {
     const name = document.getElementById('inp-name').value.trim();
     const text = document.getElementById('inp-text').value.trim();
-    if (!file || !name || !text) { toast('Photo, name and text required!'); return; }
+    if ((!file && !libPhoto) || !name || !text) { toast('ფოტო, სახელი და ტექსტი საჭიროა!'); return; }
 
     document.getElementById('btn-gen').disabled = true;
     document.getElementById('spin').style.display = 'block';
     document.getElementById('res').style.display  = 'none';
 
     const fd = new FormData();
-    fd.append('photo', file);
+    if (file) {
+      fd.append('photo', file);
+    } else if (libPhoto) {
+      fd.append('lib_photo', libPhoto);
+    }
     fd.append('name',  name);
     fd.append('text',  text);
 
@@ -456,24 +525,40 @@ async def dashboard():
 
 @app.post("/api/generate")
 async def api_generate(
-    photo: UploadFile = File(...),
-    name:  str        = Form(...),
-    text:  str        = Form(...),
+    photo: Optional[UploadFile] = File(None),
+    lib_photo: Optional[str] = Form(None),
+    name:  str = Form(...),
+    text:  str = Form(...),
 ):
     card_id    = uuid.uuid4().hex[:8]
     photo_path = UPLOADS / f"{card_id}.jpg"
     card_path  = CARDS   / f"{card_id}_card.jpg"
 
-    # save upload
-    photo_path.write_bytes(await photo.read())
+    # determine photo source: upload or library
+    if photo and photo.filename:
+        # save uploaded photo
+        photo_path.write_bytes(await photo.read())
+        use_lib = False
+    elif lib_photo:
+        # use library photo (lib_photo is like /photos/person.jpg)
+        filename = lib_photo.replace("/photos/", "")
+        lib_path = PHOTOS / filename
+        if not lib_path.exists():
+            return JSONResponse(status_code=400, content={"error": "Library photo not found"})
+        photo_path = lib_path
+        use_lib = True
+    else:
+        return JSONResponse(status_code=400, content={"error": "No photo provided"})
 
     try:
         generator.generate(str(photo_path), name, text, str(card_path))
     except Exception as exc:
-        photo_path.unlink(missing_ok=True)
+        if not use_lib:
+            photo_path.unlink(missing_ok=True)
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
-    photo_path.unlink(missing_ok=True)          # source no longer needed
+    if not use_lib:
+        photo_path.unlink(missing_ok=True)  # remove uploaded temp file
 
     # No auto-upload — user clicks "Upload to Facebook" button
     _add_history(name, f"/cards/{card_id}_card.jpg")
@@ -483,6 +568,23 @@ async def api_generate(
 @app.get("/api/history")
 async def api_history():
     return history
+
+
+@app.get("/api/library")
+async def api_library():
+    """List all photos in the library folder."""
+    photos = []
+    for ext in ("*.jpg", "*.jpeg", "*.png", "*.webp"):
+        for f in PHOTOS.glob(ext):
+            if f.name.startswith("."):
+                continue
+            photos.append({
+                "name": f.stem,
+                "url": f"/photos/{f.name}",
+            })
+    # sort by name
+    photos.sort(key=lambda x: x["name"].lower())
+    return photos
 
 
 @app.get("/api/status")
