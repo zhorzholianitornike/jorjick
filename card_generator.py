@@ -29,6 +29,19 @@ CARD_W = 1080
 CARD_H = 1350
 
 # ---------------------------------------------------------------------------
+# Load font as base64 for embedding in HTML
+# ---------------------------------------------------------------------------
+def _get_font_base64() -> str:
+    """Load Helvetica Georgian font as base64, fallback to Noto."""
+    font_path = Path(__file__).parent / "fonts" / "HELVETICANEUELTGEO-55ROMAN.otf"
+    if not font_path.exists():
+        font_path = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
+    if font_path.exists():
+        with open(font_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+# ---------------------------------------------------------------------------
 # HTML TEMPLATE
 # ---------------------------------------------------------------------------
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -36,7 +49,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;700&display=swap');
+  @font-face {{
+    font-family: 'HelveticaGeo';
+    src: url('data:font/otf;base64,{font_base64}') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+  }}
 
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
@@ -55,7 +73,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     background-size: cover;
     background-position: center top;
     overflow: hidden;
-    font-family: 'Noto Sans Georgian', sans-serif;
+    font-family: 'HelveticaGeo', 'Noto Sans Georgian', sans-serif;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -257,6 +275,7 @@ class CardGenerator:
             name=_escape_html(name.upper()),
             text=_escape_html(text.upper()),
             logo_html=self._get_logo_html(),
+            font_base64=_get_font_base64(),
         )
 
     def generate(
@@ -405,7 +424,10 @@ def generate_auto_card(
     img = Image.alpha_composite(img, overlay)
 
     # Load font
-    font_path = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
+    # Try Helvetica Georgian first, then fallback to Noto
+    font_path = Path(__file__).parent / "fonts" / "HELVETICANEUELTGEO-55ROMAN.otf"
+    if not font_path.exists():
+        font_path = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
     if not font_path.exists():
         try:
             from setup_fonts import download
