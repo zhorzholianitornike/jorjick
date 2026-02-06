@@ -20,12 +20,16 @@ import asyncio
 import json
 import os
 import uuid
+import urllib3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
 import requests
 import uvicorn
+
+# Suppress SSL warnings (interpressnews.ge has cert issues)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -1879,6 +1883,127 @@ def _add_history(name: str, card_url: str):
 
 
 # ---------------------------------------------------------------------------
+# interpressnews.ge scraper + auto-news state
+# ---------------------------------------------------------------------------
+_pending_news: dict = {}       # {news_id: {title, url, image_url, time}}
+_seen_news_urls: set = set()   # already sent/processed URLs
+
+
+def _scrape_interpressnews() -> list[dict]:
+    """Scrape latest politics news from interpressnews.ge.
+    Returns [{title, url, image_url, time}, ...]."""
+    from bs4 import BeautifulSoup
+
+    try:
+        resp = requests.get(
+            "https://interpressnews.ge/ka/category/5-politika/",
+            headers={"User-Agent": "Mozilla/5.0"},
+            verify=False,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+    except Exception as exc:
+        print(f"[IPN] Scrape failed: {exc}")
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    articles = []
+
+    for item in soup.find_all("div", itemscope=True, itemtype="http://schema.org/Article"):
+        a_tag = item.find("a", itemprop="url")
+        h2_tag = item.find("h2", itemprop="name")
+        img_tag = item.find("img", itemprop="image")
+        time_tag = item.find("time")
+
+        if not a_tag or not h2_tag:
+            continue
+
+        href = a_tag.get("href", "")
+        if href and not href.startswith("http"):
+            href = "https://interpressnews.ge" + href
+
+        image_url = None
+        if img_tag:
+            image_url = img_tag.get("data-src") or img_tag.get("src")
+
+        articles.append({
+            "title": h2_tag.get_text(strip=True),
+            "url": href,
+            "image_url": image_url,
+            "time": time_tag.get("datetime", "") if time_tag else "",
+        })
+
+    print(f"[IPN] Scraped {len(articles)} articles")
+    return articles
+
+
+def _send_telegram_photo(image_url: str, caption: str, reply_markup: dict = None):
+    """Send a photo message to TELEGRAM_ADMIN_ID (blocking)."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return None
+    try:
+        data = {
+            "chat_id": TELEGRAM_ADMIN_ID,
+            "photo": image_url,
+            "caption": caption,
+            "parse_mode": "HTML",
+        }
+        if reply_markup:
+            data["reply_markup"] = json.dumps(reply_markup)
+        resp = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto",
+            data=data,
+            timeout=15,
+        )
+        return resp.json()
+    except Exception as exc:
+        print(f"[TG] Photo send failed: {exc}")
+        return None
+
+
+def _send_news_to_telegram(news_id: str, article: dict):
+    """Send a news article to Telegram with approve/reject buttons."""
+    caption = (
+        f"📰 <b>ახალი სიახლე</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"<b>{article['title']}</b>\n\n"
+        f"🔗 {article['url']}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    reply_markup = {
+        "inline_keyboard": [[
+            {"text": "✅ დადასტურება", "callback_data": f"news_approve:{news_id}"},
+            {"text": "❌ უარყოფა", "callback_data": f"news_reject:{news_id}"},
+        ]]
+    }
+
+    if article.get("image_url"):
+        result = _send_telegram_photo(article["image_url"], caption, reply_markup)
+        if result and result.get("ok"):
+            return
+        # fallback to text if photo send fails
+
+    # Send as text message
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_ADMIN_ID,
+                "text": caption,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+            },
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"[TG] News send failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Telegram bot  (background asyncio task)
 # ---------------------------------------------------------------------------
 async def _run_telegram():
@@ -1886,10 +2011,10 @@ async def _run_telegram():
         print("[!] TELEGRAM_BOT_TOKEN not set — Telegram bot skipped")
         return
 
-    from telegram import Update
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.ext import (
-        Application, CommandHandler, ConversationHandler,
-        MessageHandler, filters,
+        Application, CallbackQueryHandler, CommandHandler,
+        ConversationHandler, MessageHandler, filters,
     )
 
     S_PHOTO, S_TEXT = 0, 1
@@ -2017,7 +2142,92 @@ async def _run_telegram():
         except Exception as exc:
             await update.message.reply_text(f"შეცდომა: {exc}")
 
+    # ── news approval callback handler ──────────────────────────────
+    async def tg_news_callback(update: Update, ctx):
+        """Handle approve/reject callbacks for auto-news."""
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data or ""
+        if not data.startswith("news_"):
+            return
+
+        parts = data.split(":", 1)
+        if len(parts) != 2:
+            return
+
+        action, news_id = parts[0].replace("news_", ""), parts[1]
+        article = _pending_news.pop(news_id, None)
+
+        if not article:
+            await query.edit_message_text("⚠️ სიახლე ვერ მოიძებნა ან უკვე დამუშავებულია.")
+            return
+
+        if action == "approve":
+            await query.edit_message_text(
+                f"✅ დადასტურებულია!\n\n"
+                f"<b>{article['title']}</b>\n\n"
+                f"⏳ ქარდი მზადდება და Facebook-ზე იტვირთება...",
+                parse_mode="HTML",
+            )
+
+            # Generate card and upload to Facebook in background
+            async def _process_approved_news(art):
+                try:
+                    from search import download_image, create_placeholder
+
+                    card_id = uuid.uuid4().hex[:8]
+                    photo_path = None
+
+                    # Download article image
+                    if art.get("image_url"):
+                        photo_path = await asyncio.to_thread(
+                            download_image, art["image_url"], f"temp/news_{card_id}.jpg"
+                        )
+
+                    # Fallback to placeholder
+                    if not photo_path:
+                        photo_path = await asyncio.to_thread(create_placeholder)
+
+                    # Generate card
+                    card_path = str(CARDS / f"{card_id}_news.jpg")
+                    await asyncio.to_thread(
+                        _save_photo_as_card, photo_path, card_path
+                    )
+
+                    # Upload to Facebook
+                    caption = f"📰 {art['title']}\n\n🔗 {art['url']}"
+                    success = await asyncio.to_thread(post_photo, card_path, caption)
+
+                    _add_history(art["title"], f"/cards/{card_id}_news.jpg")
+
+                    if success:
+                        _send_telegram(
+                            f"✅ Facebook-ზე ატვირთულია!\n\n"
+                            f"📰 {art['title']}"
+                        )
+                    else:
+                        _send_telegram(
+                            f"⚠️ Facebook ატვირთვა ვერ მოხერხდა\n\n"
+                            f"📰 {art['title']}"
+                        )
+
+                except Exception as exc:
+                    print(f"[News] Process failed: {exc}")
+                    _send_telegram(f"❌ შეცდომა: {exc}")
+
+            asyncio.create_task(_process_approved_news(article))
+
+        elif action == "reject":
+            _seen_news_urls.add(article["url"])
+            await query.edit_message_text(
+                f"❌ გამოტოვებულია\n\n"
+                f"<s>{article['title']}</s>",
+                parse_mode="HTML",
+            )
+
     tg = Application.builder().token(TELEGRAM_TOKEN).build()
+    tg.add_handler(CallbackQueryHandler(tg_news_callback, pattern=r"^news_"))
     tg.add_handler(CommandHandler("voice", tg_voice))
     tg.add_handler(ConversationHandler(
         entry_points=[CommandHandler("start", tg_start)],
@@ -2042,6 +2252,7 @@ async def on_startup():
     ensure_font()                                   # download Georgian font if missing
     asyncio.create_task(_run_telegram())            # telegram runs alongside FastAPI
     asyncio.create_task(_hourly_status_report())    # hourly status reports
+    asyncio.create_task(_auto_news_loop())          # auto-news every 15 min
 
 
 # ---------------------------------------------------------------------------
@@ -2085,6 +2296,55 @@ async def _hourly_status_report():
             print(f"[Status] Report failed: {exc}")
 
         await asyncio.sleep(3600)  # wait 1 hour
+
+
+# ---------------------------------------------------------------------------
+# Auto-news loop — scrape interpressnews.ge every 15 minutes
+# ---------------------------------------------------------------------------
+async def _auto_news_loop():
+    """Every 15 minutes: scrape interpressnews.ge, send unseen news to Telegram."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        print("[News] No TELEGRAM_BOT_TOKEN or ADMIN_ID — auto-news disabled")
+        return
+
+    # Wait 60s on startup to let Telegram bot initialize first
+    await asyncio.sleep(60)
+    print("[News] Auto-news loop started (every 15 min)")
+
+    while True:
+        try:
+            articles = await asyncio.to_thread(_scrape_interpressnews)
+
+            if not articles:
+                print("[News] No articles found, retrying in 15 min")
+                await asyncio.sleep(900)
+                continue
+
+            # Find first unseen article
+            chosen = None
+            for art in articles:
+                if art["url"] not in _seen_news_urls:
+                    chosen = art
+                    break
+
+            if not chosen:
+                print("[News] All articles already seen, retrying in 15 min")
+                await asyncio.sleep(900)
+                continue
+
+            # Mark as seen and store as pending
+            _seen_news_urls.add(chosen["url"])
+            news_id = uuid.uuid4().hex[:8]
+            _pending_news[news_id] = chosen
+
+            # Send to Telegram for approval
+            await asyncio.to_thread(_send_news_to_telegram, news_id, chosen)
+            print(f"[News] Sent for approval: {chosen['title'][:50]}...")
+
+        except Exception as exc:
+            print(f"[News] Loop error: {exc}")
+
+        await asyncio.sleep(900)  # 15 minutes
 
 
 # ---------------------------------------------------------------------------
