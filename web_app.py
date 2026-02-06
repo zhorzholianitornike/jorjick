@@ -92,46 +92,45 @@ async def startup_event():
 
     try:
         if not os.path.exists(git_dir):
-            # Clone repository
-            print("[Startup] Cloning repository...")
+            # Init git repo and add remote
+            print("[Startup] Initializing git repo...")
+            subprocess.run(["git", "init"], cwd=repo_dir, capture_output=True, timeout=5)
             subprocess.run(
-                ["git", "clone", repo_url, "."],
-                cwd=repo_dir,
-                check=True,
-                capture_output=True,
-                timeout=30
+                ["git", "remote", "add", "origin", repo_url],
+                cwd=repo_dir, capture_output=True, timeout=5
             )
-            print("[Startup] ✓ Repository cloned")
-        else:
-            # Pull latest changes
-            print("[Startup] Pulling latest changes...")
-            subprocess.run(
-                ["git", "config", "--local", "user.name", "Railway Bot"],
-                cwd=repo_dir,
-                capture_output=True,
-                timeout=5
-            )
-            subprocess.run(
-                ["git", "config", "--local", "user.email", "bot@railway.app"],
-                cwd=repo_dir,
-                capture_output=True,
-                timeout=5
-            )
-            subprocess.run(
-                ["git", "pull", "origin", "main"],
-                cwd=repo_dir,
-                check=True,
-                capture_output=True,
-                timeout=20
-            )
-            print("[Startup] ✓ Repository updated")
 
-        # Ensure photos directory exists
+        # Configure git
+        subprocess.run(
+            ["git", "config", "user.name", "Railway Bot"],
+            cwd=repo_dir, capture_output=True, timeout=5
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "bot@railway.app"],
+            cwd=repo_dir, capture_output=True, timeout=5
+        )
+
+        # Fetch and sync photos from remote
+        print("[Startup] Fetching from GitHub...")
+        subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=repo_dir, check=True, capture_output=True, timeout=30
+        )
+
+        # Checkout only the photos/ directory from remote
+        print("[Startup] Syncing photos...")
+        subprocess.run(
+            ["git", "checkout", "origin/main", "--", "photos/"],
+            cwd=repo_dir, check=True, capture_output=True, timeout=15
+        )
+        print("[Startup] ✓ Photos synced from GitHub")
+
         PHOTOS.mkdir(exist_ok=True)
         print(f"[Startup] ✓ Photos directory ready")
 
     except subprocess.CalledProcessError as e:
-        print(f"[Startup] ✗ Git operation failed: {e.stderr if hasattr(e, 'stderr') else e}")
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        print(f"[Startup] ✗ Git operation failed: {stderr}")
     except Exception as e:
         print(f"[Startup] ✗ Error: {e}")
 
