@@ -453,6 +453,15 @@ DASHBOARD = """<!DOCTYPE html>
         lastCardUrl  = data.card_url;
         lastCardName = name;
         loadHistory();
+        // reload library to show newly uploaded photo
+        if (file) {
+          loadLibrary();
+          // clear upload preview
+          file = null;
+          prev.src = '';
+          prev.style.display = 'none';
+          fi.value = '';
+        }
       } else { toast('Error: ' + (data.error || 'unknown')); }
     } catch(e) { toast('Network error: ' + e.message); }
 
