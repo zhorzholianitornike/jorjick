@@ -129,6 +129,15 @@ DASHBOARD = """<!DOCTYPE html>
                  cursor:pointer; text-decoration:none; }
   .dl:hover    { text-decoration:underline; }
 
+  /* facebook button */
+  .btn-fb      { margin-top:12px; padding:10px 20px; background:#1877f2; color:#fff;
+                 border:none; border-radius:7px; font-size:14px; font-weight:600;
+                 cursor:pointer; transition:background .2s; }
+  .btn-fb:hover{ background:#166fe5; }
+  .btn-fb:disabled { background:#2d3148; color:#64748b; cursor:not-allowed; }
+  .btn-fb.done { background:#4ade80; }
+  .btn-fb.fail { background:#ef4444; }
+
   /* toast */
   .toast       { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
                  background:#ef4444; color:#fff; padding:12px 22px; border-radius:8px;
@@ -191,6 +200,8 @@ DASHBOARD = """<!DOCTYPE html>
       <img id="res-img" alt="">
       <br>
       <a class="dl" id="res-dl" href="" download="card.jpg">⬇ Download</a>
+      <br>
+      <button class="btn-fb" id="btn-fb" onclick="uploadFB('res')">📘 Upload to Facebook</button>
     </div>
   </div>
 
@@ -209,6 +220,8 @@ DASHBOARD = """<!DOCTYPE html>
       <img id="res-auto-img" alt="">
       <br>
       <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ Download</a>
+      <br>
+      <button class="btn-fb" id="btn-fb-auto" onclick="uploadFB('res-auto')">📘 Upload to Facebook</button>
     </div>
     <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
   </div>
@@ -228,6 +241,10 @@ DASHBOARD = """<!DOCTYPE html>
   const fi     = document.getElementById('fi');
   const prev   = document.getElementById('prev');
   let   file   = null;
+  let   lastCardUrl  = '';   // store last generated card URL
+  let   lastCardName = '';   // store last generated card name
+  let   lastAutoUrl  = '';   // store last auto-generated card URL
+  let   lastAutoName = '';   // store last auto-generated card name
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ── upload wiring ─────────────────────────────────────────────────
@@ -269,6 +286,11 @@ DASHBOARD = """<!DOCTYPE html>
         document.getElementById('res-img').src = data.card_url;
         document.getElementById('res-dl').href = data.card_url;
         document.getElementById('res').style.display = 'block';
+        document.getElementById('btn-fb').className = 'btn-fb';
+        document.getElementById('btn-fb').textContent = '📘 Upload to Facebook';
+        document.getElementById('btn-fb').disabled = false;
+        lastCardUrl  = data.card_url;
+        lastCardName = name;
         loadHistory();
       } else { toast('Error: ' + (data.error || 'unknown')); }
     } catch(e) { toast('Network error: ' + e.message); }
@@ -321,6 +343,11 @@ DASHBOARD = """<!DOCTYPE html>
               logEl.innerHTML += '<span style="color:#4ade80">✓ Card created</span><br>';
               document.getElementById('res-auto-img').src  = evt.card_url;
               document.getElementById('res-auto-dl').href  = evt.card_url;
+              document.getElementById('btn-fb-auto').className = 'btn-fb';
+              document.getElementById('btn-fb-auto').textContent = '📘 Upload to Facebook';
+              document.getElementById('btn-fb-auto').disabled = false;
+              lastAutoUrl  = evt.card_url;
+              lastAutoName = evt.name || '';
               resEl.style.display = 'block';
               loadHistory();
             }
@@ -370,6 +397,42 @@ DASHBOARD = """<!DOCTYPE html>
     }
   });
 
+  // ── upload to Facebook ─────────────────────────────────────────────
+  window.uploadFB = async function(resultId) {
+    const isAuto  = resultId === 'res-auto';
+    const cardUrl = isAuto ? lastAutoUrl  : lastCardUrl;
+    const name    = isAuto ? lastAutoName : lastCardName;
+    const btn     = document.getElementById(isAuto ? 'btn-fb-auto' : 'btn-fb');
+
+    if (!cardUrl) { toast('No card to upload'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+
+    try {
+      const fd = new FormData();
+      fd.append('card_url', cardUrl);
+      fd.append('name', name);
+      const r = await fetch('/api/upload-facebook', { method:'POST', body:fd });
+      const data = await r.json();
+      if (data.success) {
+        btn.className = 'btn-fb done';
+        btn.textContent = '✓ Uploaded to Facebook';
+        toast('Card uploaded to Facebook!');
+      } else {
+        btn.className = 'btn-fb fail';
+        btn.textContent = '✕ Upload failed';
+        toast('Facebook upload failed: ' + (data.error || 'unknown'));
+        btn.disabled = false;
+      }
+    } catch(e) {
+      btn.className = 'btn-fb fail';
+      btn.textContent = '✕ Upload failed';
+      toast('Network error: ' + e.message);
+      btn.disabled = false;
+    }
+  };
+
   // ── toast helper ──────────────────────────────────────────────────
   window.toast = function(msg) {
     const t = document.getElementById('toast');
@@ -412,9 +475,7 @@ async def api_generate(
 
     photo_path.unlink(missing_ok=True)          # source no longer needed
 
-    # upload to Facebook + notify via Telegram in background
-    asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
-
+    # No auto-upload — user clicks "Upload to Facebook" button
     _add_history(name, f"/cards/{card_id}_card.jpg")
     return {"card_url": f"/cards/{card_id}_card.jpg"}
 
@@ -431,6 +492,30 @@ async def api_status():
             "ai_backend": os.environ.get("BACKEND", "claude").upper(),
             "tavily_key": bool(os.environ.get("TAVILY_API_KEY")),
             "gemini_key": bool(os.environ.get("GEMINI_API_KEY"))}
+
+
+@app.post("/api/upload-facebook")
+async def api_upload_facebook(
+    card_url: str = Form(...),
+    name: str = Form(...),
+):
+    """Upload a generated card to Facebook (user-triggered)."""
+    # card_url is like /cards/abc123_card.jpg — convert to file path
+    if not card_url.startswith("/cards/"):
+        return JSONResponse(status_code=400, content={"success": False, "error": "Invalid card URL"})
+
+    filename = card_url.replace("/cards/", "")
+    card_path = CARDS / filename
+
+    if not card_path.exists():
+        return JSONResponse(status_code=404, content={"success": False, "error": "Card not found"})
+
+    # Upload to Facebook + notify via Telegram
+    try:
+        await asyncio.to_thread(_upload_and_notify, str(card_path), name)
+        return {"success": True}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
 
 @app.post("/api/auto-generate")
@@ -509,11 +594,10 @@ async def api_auto_generate(theme: str = Form(...)):
                 generate_auto_card, photo_path, name, text, str(card_path)
             )
 
-            # 4. Facebook upload in background
-            asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
+            # No auto-upload — user clicks "Upload to Facebook" button
             card_url = f"/cards/{card_id}_auto.jpg"
             _add_history(name, card_url)
-            yield _e({"t": "log", "m": "Uploading to Facebook..."})
+            yield _e({"t": "log", "m": "Card ready! Click button to upload to Facebook"})
             yield _e({"t": "done", "card_url": card_url, "name": name})
 
         except Exception as exc:
