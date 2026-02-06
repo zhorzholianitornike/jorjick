@@ -314,8 +314,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400">[Tavily + Gemini]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini AI → Card → Facebook</p>
+    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + OpenAI Thinking]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → OpenAI o3-mini (Thinking) → Card → Facebook</p>
     <div class="row">
       <div class="g"><label>თემა</label>
         <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
@@ -629,11 +629,12 @@ DASHBOARD = """<!DOCTYPE html>
     if (b && d.ai_backend) b.textContent = '[' + d.ai_backend + ']';
     const miss = [];
     if (d.tavily_key === false) miss.push('TAVILY_API_KEY');
-    if (d.gemini_key === false) miss.push('GEMINI_API_KEY');
+    if (d.openai_key === false) miss.push('OPENAI_API_KEY');
+    if (d.gemini_key === false) miss.push('GEMINI_API_KEY (fallback)');
     if (miss.length) {
       document.getElementById('auto-log').innerHTML =
-        '<span style="color:#f59e0b">⚠ Railway env vars missing: ' + miss.join(', ') +
-        ' — Auto card disabled</span>';
+        '<span style="color:#f59e0b">⚠ Missing: ' + miss.join(', ') +
+        '</span>';
     }
   });
 
@@ -923,7 +924,8 @@ async def api_status():
             "cards":    len(history),
             "ai_backend": os.environ.get("BACKEND", "claude").upper(),
             "tavily_key": bool(os.environ.get("TAVILY_API_KEY")),
-            "gemini_key": bool(os.environ.get("GEMINI_API_KEY"))}
+            "gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
+            "openai_key": bool(os.environ.get("OPENAI_API_KEY"))}
 
 
 @app.post("/api/upload-facebook")
@@ -972,21 +974,33 @@ async def api_auto_generate(theme: str = Form(...)):
             n_img = len(tavily_res.get("images",  []))
             yield _e({"t": "log", "m": f"Found: {n_res} articles, {n_img} images"})
 
-            # 2. AI picks the best story  (Gemini first, Claude/Kimi fallback)
-            yield _e({"t": "log", "m": "Gemini picking story..."})
-            card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
-            if "error" in card_info:
-                # Gemini failed (429 quota, key missing, …) → try Claude / Kimi
-                yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi..."})
-                card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
+            # 2. AI picks the best story  (OpenAI Thinking → Gemini → Claude/Kimi)
+            card_info = None
+
+            # Try OpenAI Thinking first (best copywriting)
+            if os.environ.get("OPENAI_API_KEY"):
+                yield _e({"t": "log", "m": "OpenAI o3-mini thinking..."})
+                card_info = await asyncio.to_thread(_pick_openai_thinking, tavily_res)
                 if "error" in card_info:
-                    yield _e({"t": "err", "m": card_info["error"]})
-                    return
-                # if fallback didn't pick an image, grab the first Tavily image
-                if not card_info.get("image_url"):
-                    imgs = tavily_res.get("images", [])
-                    if imgs:
-                        card_info["image_url"] = imgs[0]
+                    yield _e({"t": "log", "m": f"OpenAI: {card_info['error'][:60]} — fallback Gemini..."})
+                    card_info = None
+
+            # Fallback: Gemini
+            if card_info is None:
+                yield _e({"t": "log", "m": "Gemini picking story..."})
+                card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
+                if "error" in card_info:
+                    # Gemini failed → try Claude / Kimi
+                    yield _e({"t": "log", "m": "Gemini: " + ("429 — " if "429" in card_info["error"] else "") + "fallback Claude/Kimi..."})
+                    card_info = await asyncio.to_thread(_ai_pick_story, tavily_res.get("results", []))
+                    if "error" in card_info:
+                        yield _e({"t": "err", "m": card_info["error"]})
+                        return
+                    # if fallback didn't pick an image, grab the first Tavily image
+                    if not card_info.get("image_url"):
+                        imgs = tavily_res.get("images", [])
+                        if imgs:
+                            card_info["image_url"] = imgs[0]
 
             name      = card_info.get("name", "Unknown")
             text      = card_info.get("text", "")
@@ -1215,6 +1229,70 @@ def _ai_pick_story(results: list[dict]) -> dict:
 
     except Exception as exc:
         return {"error": f"AI: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# OpenAI Thinking story picker  (o3-mini with reasoning for better copywriting)
+# ---------------------------------------------------------------------------
+def _pick_openai_thinking(tavily_res: dict) -> dict:
+    """Use OpenAI o3-mini (thinking model) for superior copywriting.
+    Returns {name, text, image_url} or {error: ...}."""
+    from openai import OpenAI
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {"error": "OPENAI_API_KEY env var is not set"}
+
+    client = OpenAI(api_key=api_key)
+
+    # format articles for the prompt
+    lines = []
+    for i, r in enumerate(tavily_res.get("results", []), 1):
+        lines.append(f"{i}. {r.get('title', '')}\n   {r.get('content', '')[:300]}")
+
+    images = tavily_res.get("images", [])
+
+    prompt = (
+        "შენ ხარ პროფესიონალი ქართველი ნიუს რედაქტორი და კოპირაიტერი.\n"
+        "შენი ამოცანაა აირჩიო ყველაზე საინტერესო ამბავი და დაწერო:\n\n"
+        "1. **name** — სათაური ქართულად (3-5 სიტყვა, მკვეთრი, ყურადღების მიქცევადი)\n"
+        "2. **text** — აღწერა ქართულად (2-3 წინადადება, 30-50 სიტყვა)\n"
+        "   - გამოიყენე პროფესიონალური ჟურნალისტური ენა\n"
+        "   - იყავი ზუსტი და ინფორმატიული\n"
+        "   - გამოიყენე აქტიური ხმა (active voice)\n"
+        "   - სათაური უნდა იყოს ემოციური და ყურადღების წამკიდე\n"
+        "3. **image_url** — საუკეთესო ფოტოს URL მოცემული სიიდან, ან null\n\n"
+        "სტატიები:\n" + "\n".join(lines) + "\n\n"
+        "ხელმისაწვდომი ფოტოების URL-ები:\n" + "\n".join(images[:10] or ["none"]) + "\n\n"
+        "უპასუხე მხოლოდ ვალიდური JSON-ით, არანაირი სხვა ტექსტი:\n"
+        '{"name":"სათაური","text":"აღწერა","image_url":"URL ან null"}'
+    )
+
+    try:
+        resp = client.chat.completions.create(
+            model="o3-mini",
+            max_completion_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.choices[0].message.content or ""
+
+        # strip markdown code-block wrapper if present
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        start = raw.index("{")
+        end   = raw.rindex("}")
+        data  = json.loads(raw[start:end + 1])
+
+        if data.get("image_url") in (None, "null", ""):
+            data["image_url"] = None
+
+        return data
+
+    except Exception as exc:
+        return {"error": f"OpenAI Thinking: {exc}"}
 
 
 # ---------------------------------------------------------------------------
