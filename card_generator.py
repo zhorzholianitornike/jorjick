@@ -423,22 +423,43 @@ def generate_auto_card(
         draw_ov.rectangle([0, y, W, y + 1], fill=(13, 18, 30, alpha))
     img = Image.alpha_composite(img, overlay)
 
-    # Load font
-    # Try Helvetica Georgian first, then fallback to Noto
-    font_path = Path(__file__).parent / "fonts" / "HELVETICANEUELTGEO-55ROMAN.otf"
-    if not font_path.exists():
-        font_path = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
-    if not font_path.exists():
+    # Load Georgian font - TTF is more reliable with Pillow than OTF
+    fonts_dir = Path(__file__).parent / "fonts"
+    font_path = None
+
+    # Priority: 1) Noto Sans Georgian (TTF, most reliable)
+    #           2) Helvetica Georgian (OTF)
+    candidates = [
+        fonts_dir / "NotoSansGeorgian.ttf",
+        fonts_dir / "HELVETICANEUELTGEO-55ROMAN.otf",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            font_path = candidate
+            print(f"[Font] Found: {candidate.name}")
+            break
+
+    # If no font found, download Noto
+    if font_path is None:
+        print("[Font] No Georgian font found, downloading...")
         try:
             from setup_fonts import download
             download()
-        except Exception:
-            pass
+            noto = fonts_dir / "NotoSansGeorgian.ttf"
+            if noto.exists():
+                font_path = noto
+                print(f"[Font] Downloaded: {noto.name}")
+        except Exception as e:
+            print(f"[Font] Download failed: {e}")
 
-    if font_path.exists():
+    # Load font
+    if font_path and font_path.exists():
+        print(f"[Font] Loading: {font_path}")
         name_font = ImageFont.truetype(str(font_path), 54)
         text_font = ImageFont.truetype(str(font_path), 28)
     else:
+        print("[Font] WARNING: No Georgian font, using system default (Georgian text will fail)")
         name_font = ImageFont.load_default()
         text_font = ImageFont.load_default()
 
