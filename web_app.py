@@ -1007,27 +1007,42 @@ async def api_auto_generate(theme: str = Form(...)):
             image_url = card_info.get("image_url")
             yield _e({"t": "log", "m": f"AI: {name}"})
 
-            # 3. Generate photo with Gemini Imagen
+            # 3. Get photo — prefer real web photo over AI-generated
             photo_path = None
-            img_prompt = (
-                f"Professional news photograph about: {name}. "
-                f"Context: {text}. "
-                "Realistic photojournalism style, high quality, no text or watermarks."
-            )
-            yield _e({"t": "log", "m": "Gemini Imagen generating photo..."})
-            photo_path = await asyncio.to_thread(
-                _generate_image_gemini, img_prompt, f"temp/auto_{card_id}.jpg"
-            )
 
-            if photo_path:
-                yield _e({"t": "log", "m": "Photo generated OK"})
-            else:
-                # Fallback: download from Tavily
-                yield _e({"t": "log", "m": "Gemini failed, downloading from web..."})
-                if image_url:
+            # First: try downloading real photo from Tavily/AI-selected URL
+            if image_url:
+                yield _e({"t": "log", "m": "Downloading real photo..."})
+                photo_path = await asyncio.to_thread(
+                    download_image, image_url, f"temp/auto_{card_id}.jpg"
+                )
+                if photo_path:
+                    yield _e({"t": "log", "m": "Real photo OK"})
+
+            # Second: try other Tavily images if first failed
+            if not photo_path:
+                for img_url in tavily_res.get("images", [])[:5]:
+                    if img_url == image_url:
+                        continue
+                    yield _e({"t": "log", "m": "Trying alternative photo..."})
                     photo_path = await asyncio.to_thread(
-                        download_image, image_url, f"temp/auto_{card_id}.jpg"
+                        download_image, img_url, f"temp/auto_{card_id}.jpg"
                     )
+                    if photo_path:
+                        yield _e({"t": "log", "m": "Alternative photo OK"})
+                        break
+
+            # Third: Gemini Imagen as last resort
+            if not photo_path:
+                img_prompt = (
+                    f"Professional news photograph: {name}. "
+                    f"{text}. "
+                    "Photojournalism style, realistic, no text/watermarks/illustrations."
+                )
+                yield _e({"t": "log", "m": "Gemini Imagen generating..."})
+                photo_path = await asyncio.to_thread(
+                    _generate_image_gemini, img_prompt, f"temp/auto_{card_id}.jpg"
+                )
 
             if not photo_path:
                 yield _e({"t": "log", "m": "Using placeholder..."})
@@ -1253,19 +1268,25 @@ def _pick_openai_thinking(tavily_res: dict) -> dict:
     images = tavily_res.get("images", [])
 
     prompt = (
-        "შენ ხარ პროფესიონალი ქართველი ნიუს რედაქტორი და კოპირაიტერი.\n"
-        "შენი ამოცანაა აირჩიო ყველაზე საინტერესო ამბავი და დაწერო:\n\n"
-        "1. **name** — სათაური ქართულად (3-5 სიტყვა, მკვეთრი, ყურადღების მიქცევადი)\n"
-        "2. **text** — აღწერა ქართულად (2-3 წინადადება, 30-50 სიტყვა)\n"
-        "   - გამოიყენე პროფესიონალური ჟურნალისტური ენა\n"
-        "   - იყავი ზუსტი და ინფორმატიული\n"
-        "   - გამოიყენე აქტიური ხმა (active voice)\n"
-        "   - სათაური უნდა იყოს ემოციური და ყურადღების წამკიდე\n"
-        "3. **image_url** — საუკეთესო ფოტოს URL მოცემული სიიდან, ან null\n\n"
+        "შენ ხარ CNN/BBC-ს დონის ქართველი ნიუს რედაქტორი.\n"
+        "ამოცანა: აირჩიე ყველაზე აქტუალური კონკრეტული ამბავი (არა ზოგადი თემა!) და დაწერე:\n\n"
+        "## name (სათაური) — წესები:\n"
+        "- მაქსიმუმ 3-4 სიტყვა\n"
+        "- კონკრეტული ფაქტი ან სახელი, არა ზოგადი აღწერა\n"
+        "- მაგალითი კარგი: 'OpenAI GPT-5 გამოაცხადა', 'მასკმა Twitter-ი გაყიდა'\n"
+        "- მაგალითი ცუდი: 'ხელოვნური ინტელექტი და გავრცელება', 'ტექნოლოგიების განვითარება'\n\n"
+        "## text (აღწერა) — წესები:\n"
+        "- 1-2 მოკლე წინადადება, მაქსიმუმ 25 სიტყვა\n"
+        "- დაიწყე კონკრეტული ფაქტით: ვინ, რა, სად, როდის\n"
+        "- არ გამოიყენო ენციკლოპედიური ენა ('გამოიყენება', 'წარმოადგენს')\n"
+        "- გამოიყენე მოქმედებითი ზმნები: 'გამოაცხადა', 'შეცვალა', 'აიკრძალა'\n"
+        "- მაგალითი კარგი: 'OpenAI-მ ახალი მოდელი წარადგინა, რომელიც ადამიანის დონეზე ფიქრობს.'\n"
+        "- მაგალითი ცუდი: 'AI დღეს ფართოდ გამოიყენება ავტომატიზაციაში და სხვადასხვა სისტემებში.'\n\n"
+        "## image_url — აირჩიე რეალური ფოტო (არა ილუსტრაცია/ინფოგრაფიკა)\n\n"
         "სტატიები:\n" + "\n".join(lines) + "\n\n"
-        "ხელმისაწვდომი ფოტოების URL-ები:\n" + "\n".join(images[:10] or ["none"]) + "\n\n"
-        "უპასუხე მხოლოდ ვალიდური JSON-ით, არანაირი სხვა ტექსტი:\n"
-        '{"name":"სათაური","text":"აღწერა","image_url":"URL ან null"}'
+        "ფოტოების URL-ები:\n" + "\n".join(images[:10] or ["none"]) + "\n\n"
+        "უპასუხე მხოლოდ JSON-ით:\n"
+        '{"name":"კონკრეტული სათაური","text":"კონკრეტული აღწერა","image_url":"URL ან null"}'
     )
 
     try:
