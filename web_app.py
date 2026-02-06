@@ -1400,6 +1400,30 @@ async def api_upload_facebook(
         return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
 
+@app.post("/api/test-news")
+async def api_test_news():
+    """Manually trigger one news scrape + send to Telegram for testing."""
+    articles = await asyncio.to_thread(_scrape_interpressnews)
+    if not articles:
+        return {"success": False, "error": "No articles found"}
+
+    # Pick first unseen, or first if all seen
+    chosen = None
+    for art in articles:
+        if art["url"] not in _seen_news_urls:
+            chosen = art
+            break
+    if not chosen:
+        chosen = articles[0]
+
+    _seen_news_urls.add(chosen["url"])
+    news_id = uuid.uuid4().hex[:8]
+    _pending_news[news_id] = chosen
+
+    await asyncio.to_thread(_send_news_to_telegram, news_id, chosen)
+    return {"success": True, "title": chosen["title"], "news_id": news_id}
+
+
 @app.post("/api/auto-generate")
 async def api_auto_generate(theme: str = Form(...)):
     """Tavily → Gemini → card → Facebook.  Streams progress via SSE."""
