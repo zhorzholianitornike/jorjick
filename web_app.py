@@ -63,6 +63,11 @@ app = FastAPI()
 app.mount("/cards", StaticFiles(directory=str(CARDS)), name="cards")
 app.mount("/photos", StaticFiles(directory=str(PHOTOS)), name="photos")
 
+# Voice generation directory
+VOICES = Path("voices")
+VOICES.mkdir(exist_ok=True)
+app.mount("/voices", StaticFiles(directory=str(VOICES)), name="voices")
+
 
 # ---------------------------------------------------------------------------
 # Startup: Clone/Pull photos from GitHub (Railway)
@@ -337,6 +342,42 @@ DASHBOARD = """<!DOCTYPE html>
       <button onclick="copyArticle()" style="margin-top:12px;padding:8px 16px;background:#2d3148;color:#94a3b8;border:1px solid #3d4158;border-radius:5px;font-size:12px;cursor:pointer">📋 კოპირება</button>
     </div>
     <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
+  </div>
+
+  <!-- voice generation panel -->
+  <div class="panel">
+    <h2>3 — ხმოვანი გენერაცია 🎙️ <span style="font-size:11px;color:#64748b;font-weight:400">[Google Cloud TTS]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ქართული ტექსტი → Google TTS → MP3 Audio (უფასო 1M chars/თვე)</p>
+
+    <div class="row">
+      <div class="g"><label>ტექსტი (ქართულად)</label>
+        <textarea id="inp-voice-text" placeholder="შეიყვანეთ ტექსტი ქართულად...&#10;მაგალითი: გამარჯობა, ეს არის ხმოვანი გენერაცია." style="min-height:100px"></textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="g"><label>ხმა</label>
+        <select id="sel-voice" style="width:100%; background:#151620; border:1px solid #2d3148; border-radius:7px; padding:9px 12px; color:#e2e8f0; font-size:14px;">
+          <option value="ka-GE-Standard-A">ქალი (Standard)</option>
+          <option value="ka-GE-Standard-B">მამაკაცი (Standard)</option>
+          <option value="ka-GE-Wavenet-A">ქალი (WaveNet - უკეთესი)</option>
+          <option value="ka-GE-Wavenet-B">მამაკაცი (WaveNet - უკეთესი)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:8px;font-size:11px;color:#64748b;">
+      <span>სიმბოლოები: </span><span id="char-count">0</span><span> / 5000 (ლიმიტი ერთ voice-over-ზე)</span>
+    </div>
+
+    <button class="btn" id="btn-voice" onclick="generateVoice()">🎙️ ხმის გენერაცია</button>
+    <div class="spin" id="spin-voice"></div>
+
+    <div class="result" id="res-voice">
+      <audio id="audio-player" controls style="width:100%;max-width:400px;margin-top:16px;display:none;"></audio>
+      <br>
+      <a class="dl" id="res-voice-dl" href="" download="voice.mp3" style="display:none;">⬇️ Download MP3</a>
+    </div>
   </div>
 
   <!-- history -->
@@ -709,6 +750,73 @@ DASHBOARD = """<!DOCTYPE html>
     t.textContent = msg; t.style.display = 'block';
     setTimeout(() => t.style.display = 'none', 5000);
   };
+
+  // ── voice generation ──────────────────────────────────────────────
+  const voiceText = document.getElementById('inp-voice-text');
+  const charCount = document.getElementById('char-count');
+
+  // Character counter
+  voiceText.addEventListener('input', () => {
+    const len = voiceText.value.length;
+    charCount.textContent = len;
+    if (len > 5000) {
+      charCount.style.color = '#ef4444';
+    } else if (len > 4000) {
+      charCount.style.color = '#f59e0b';
+    } else {
+      charCount.style.color = '#4ade80';
+    }
+  });
+
+  window.generateVoice = async function() {
+    const text = voiceText.value.trim();
+    const voice = document.getElementById('sel-voice').value;
+    const btn = document.getElementById('btn-voice');
+    const spin = document.getElementById('spin-voice');
+    const result = document.getElementById('res-voice');
+    const player = document.getElementById('audio-player');
+    const dl = document.getElementById('res-voice-dl');
+
+    if (!text) {
+      toast('გთხოვთ შეიყვანოთ ტექსტი');
+      return;
+    }
+
+    if (text.length > 5000) {
+      toast('ტექსტი ძალიან გრძელია (მაქს 5000 სიმბოლო)');
+      return;
+    }
+
+    btn.disabled = true;
+    spin.style.display = 'block';
+    result.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/generate-voice', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text, voice})
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.audio_url) {
+        player.src = data.audio_url;
+        player.style.display = 'block';
+        dl.href = data.audio_url;
+        dl.style.display = 'inline-block';
+        result.style.display = 'block';
+        toast('ხმა წარმატებით გენერირდა! 🎉', 'success');
+      } else {
+        toast('შეცდომა: ' + (data.error || 'unknown'));
+      }
+    } catch(e) {
+      toast('Network error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      spin.style.display = 'none';
+    }
+  };
 })();
 </script>
 </body>
@@ -954,6 +1062,83 @@ async def api_status():
             "tavily_key": bool(os.environ.get("TAVILY_API_KEY")),
             "gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
             "openai_key": bool(os.environ.get("OPENAI_API_KEY"))}
+
+
+@app.post("/api/generate-voice")
+async def api_generate_voice(request: dict):
+    """Generate voice-over from Georgian text using Google Cloud TTS."""
+    text = request.get("text", "").strip()
+    voice_name = request.get("voice", "ka-GE-Standard-A")
+
+    if not text:
+        return JSONResponse(status_code=400, content={"error": "ტექსტი ცარიელია"})
+
+    if len(text) > 5000:
+        return JSONResponse(status_code=400, content={"error": "ტექსტი ძალიან გრძელია (მაქს 5000)"})
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return JSONResponse(status_code=500, content={"error": "GEMINI_API_KEY არ არის დაყენებული"})
+
+    # Google Cloud TTS API endpoint
+    tts_url = "https://texttospeech.googleapis.com/v1/text:synthesize"
+
+    payload = {
+        "input": {"text": text},
+        "voice": {
+            "languageCode": "ka-GE",
+            "name": voice_name
+        },
+        "audioConfig": {
+            "audioEncoding": "MP3",
+            "speakingRate": 1.0,
+            "pitch": 0.0
+        }
+    }
+
+    try:
+        resp = await asyncio.to_thread(
+            lambda: requests.post(
+                tts_url,
+                json=payload,
+                params={"key": api_key},
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+        )
+
+        if resp.status_code != 200:
+            error_msg = resp.json().get("error", {}).get("message", "Unknown error")
+            return JSONResponse(status_code=500, content={"error": f"TTS API: {error_msg}"})
+
+        data = resp.json()
+        audio_content = data.get("audioContent")
+
+        if not audio_content:
+            return JSONResponse(status_code=500, content={"error": "Audio არ გენერირდა"})
+
+        # Decode base64 and save as MP3
+        import base64
+        audio_bytes = base64.b64decode(audio_content)
+
+        # Create voices directory if not exists
+        voices_dir = Path("voices")
+        voices_dir.mkdir(exist_ok=True)
+
+        # Generate unique filename
+        voice_id = uuid.uuid4().hex[:8]
+        voice_file = voices_dir / f"voice_{voice_id}.mp3"
+        voice_file.write_bytes(audio_bytes)
+
+        return {
+            "success": True,
+            "audio_url": f"/voices/{voice_file.name}",
+            "characters": len(text),
+            "voice": voice_name
+        }
+
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/upload-facebook")
