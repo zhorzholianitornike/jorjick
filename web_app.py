@@ -1962,6 +1962,69 @@ def _scrape_interpressnews() -> list[dict]:
     return articles
 
 
+def _scrape_article_text(url: str) -> str:
+    """Scrape full article text from an interpressnews.ge article page."""
+    from bs4 import BeautifulSoup
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            verify=False,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        resp.encoding = "utf-8"
+    except Exception as exc:
+        print(f"[IPN] Article scrape failed: {exc}")
+        return ""
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    paragraphs = soup.find_all("p")
+    texts = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20]
+    return "\n".join(texts)
+
+
+def _generate_fb_caption(title: str, article_text: str, url: str) -> str:
+    """Use Gemini to generate a detailed Facebook caption with hashtags."""
+    from google import genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return f"📰 {title}\n\n{article_text[:300]}\n\n🔗 {url}"
+
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "შენ ხარ ქართული მედიის სოციალური ქსელების რედაქტორი.\n"
+            "დაწერე Facebook-ის პოსტი შემდეგი სიახლისთვის.\n\n"
+            "წესები:\n"
+            "- დაწერე ქართულად\n"
+            "- პირველი ხაზი: მოკლე, ყურადღების მიპყრობა (hook)\n"
+            "- შემდეგ 3-5 წინადადებით აღწერე სიახლე დეტალურად\n"
+            "- ბოლოს დაამატე 5-8 რელევანტური ჰეშთეგი ქართულად და ინგლისურად\n"
+            "- არ გამოიყენო emoji ტექსტში, მხოლოდ ჰეშთეგებამდე ერთი 📰\n"
+            "- არ მოიგონო ფაქტები, მხოლოდ ტექსტში არსებული ინფორმაცია გამოიყენე\n\n"
+            f"სათაური: {title}\n\n"
+            f"სტატიის ტექსტი:\n{article_text[:1500]}\n\n"
+            "დაწერე მხოლოდ Facebook პოსტის ტექსტი, სხვა არაფერი:"
+        )
+
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        caption = resp.text.strip()
+
+        # Append source link
+        caption += f"\n\n🔗 წყარო: {url}"
+        return caption
+
+    except Exception as exc:
+        print(f"[Caption] Gemini failed: {exc}")
+        return f"📰 {title}\n\n{article_text[:300]}\n\n🔗 წყარო: {url}"
+
+
 def _send_telegram_photo(image_url: str, caption: str, reply_markup: dict = None):
     """Send a photo message to TELEGRAM_ADMIN_ID (blocking)."""
     if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
@@ -2225,8 +2288,17 @@ async def _run_telegram():
                         _save_photo_as_card, photo_path, card_path
                     )
 
+                    # Scrape full article text for better caption
+                    article_text = await asyncio.to_thread(
+                        _scrape_article_text, art["url"]
+                    )
+
+                    # Generate detailed Facebook caption with hashtags via Gemini
+                    caption = await asyncio.to_thread(
+                        _generate_fb_caption, art["title"], article_text, art["url"]
+                    )
+
                     # Upload to Facebook
-                    caption = f"📰 {art['title']}\n\n🔗 {art['url']}"
                     success = await asyncio.to_thread(post_photo, card_path, caption)
 
                     _add_history(art["title"], f"/cards/{card_id}_news.jpg")
