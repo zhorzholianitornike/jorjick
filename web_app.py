@@ -314,8 +314,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini 3.0 Pro]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 3.0 Pro (Latest) → Card → Facebook</p>
+    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini 3 Flash]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 3 Flash Preview → Card → Facebook</p>
     <div class="row">
       <div class="g"><label>თემა</label>
         <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
@@ -1011,7 +1011,7 @@ async def api_auto_generate(theme: str = Form(...)):
 
             # Try Gemini first (best Georgian copywriting)
             if os.environ.get("GEMINI_API_KEY"):
-                yield _e({"t": "log", "m": "Gemini 2.0 Flash thinking..."})
+                yield _e({"t": "log", "m": "Gemini 3 Flash Preview..."})
                 card_info = await asyncio.to_thread(_pick_gemini, tavily_res)
                 if "error" in card_info:
                     yield _e({"t": "log", "m": f"Gemini: {card_info['error'][:60]} — fallback OpenAI..."})
@@ -1404,7 +1404,7 @@ def _pick_gemini(tavily_res: dict) -> dict:
 
     try:
         resp = client.models.generate_content(
-            model="gemini-3.0-pro",
+            model="gemini-3-flash-preview",
             contents=prompt,
         )
         raw  = resp.text
