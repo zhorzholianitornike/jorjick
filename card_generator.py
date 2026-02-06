@@ -287,50 +287,40 @@ class CardGenerator:
         text: str,
         output_path: str,
     ) -> str:
-        """Render HTML to image using Playwright (async API with new event loop)."""
-        import asyncio
+        """Render HTML to image using subprocess worker (avoids asyncio conflicts)."""
+        import subprocess
+        import tempfile
 
         html = self._build_html(image_data, name, text)
 
         # Ensure output directory exists
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # Run in a fresh event loop to avoid conflicts with FastAPI's loop
+        # Write HTML to temp file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+            f.write(html)
+            html_path = f.name
+
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._screenshot_async(html, output_path))
+            # Get the path to screenshot_worker.py (same directory as this file)
+            worker_path = Path(__file__).parent / "screenshot_worker.py"
+
+            # Run screenshot worker as subprocess
+            result = subprocess.run(
+                ["python3", str(worker_path), html_path, output_path, str(CARD_W), str(CARD_H)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Screenshot failed: {result.stderr}")
+
         finally:
-            loop.close()
+            # Clean up temp file
+            Path(html_path).unlink(missing_ok=True)
 
         return output_path
-
-    async def _screenshot_async(self, html: str, output_path: str):
-        """Take screenshot using async Playwright API."""
-        import asyncio
-        from playwright.async_api import async_playwright
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox"],
-            )
-            page = await browser.new_page(
-                viewport={"width": CARD_W, "height": CARD_H},
-            )
-            await page.set_content(html)
-
-            # Wait for fonts to load
-            await page.wait_for_load_state("networkidle")
-            await asyncio.sleep(0.3)  # Extra time for font rendering
-
-            # Screenshot
-            await page.screenshot(
-                path=output_path,
-                type="jpeg",
-                quality=95,
-            )
-            await browser.close()
 
 
 # ---------------------------------------------------------------------------
