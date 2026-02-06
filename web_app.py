@@ -1753,6 +1753,50 @@ async def _run_telegram():
 async def on_startup():
     ensure_font()                                   # download Georgian font if missing
     asyncio.create_task(_run_telegram())            # telegram runs alongside FastAPI
+    asyncio.create_task(_hourly_status_report())    # hourly status reports
+
+
+# ---------------------------------------------------------------------------
+# Hourly status report via Telegram
+# ---------------------------------------------------------------------------
+_start_time = datetime.now(TBILISI)
+
+async def _hourly_status_report():
+    """Send hourly status report to Telegram admin."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        print("[Status] No TELEGRAM_BOT_TOKEN or ADMIN_ID — hourly reports disabled")
+        return
+
+    # Wait until the next full hour
+    now = datetime.now(TBILISI)
+    minutes_to_wait = 60 - now.minute
+    seconds_to_wait = minutes_to_wait * 60 - now.second
+    if seconds_to_wait > 0:
+        await asyncio.sleep(seconds_to_wait)
+
+    while True:
+        try:
+            now = datetime.now(TBILISI)
+            uptime = now - _start_time
+            hours = int(uptime.total_seconds() // 3600)
+            minutes = int((uptime.total_seconds() % 3600) // 60)
+
+            report = (
+                f"📊 საათობრივი რეპორტი — {now.strftime('%H:%M  %d/%m/%Y')}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ სტატუსი: აქტიური\n"
+                f"⏱ აქტიურია: {hours}სთ {minutes}წთ\n"
+                f"🃏 შექმნილი ქარდები: {len(history)}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🤖 რუსთავი 2-ის ბოტი აქტიურია და მზადყოფნაშია!"
+            )
+
+            await asyncio.to_thread(_send_telegram, report)
+            print(f"[Status] Hourly report sent at {now.strftime('%H:%M')}")
+        except Exception as exc:
+            print(f"[Status] Report failed: {exc}")
+
+        await asyncio.sleep(3600)  # wait 1 hour
 
 
 # ---------------------------------------------------------------------------
