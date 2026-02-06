@@ -30,7 +30,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from card_generator import CardGenerator
+from card_generator import CardGenerator, generate_auto_card
 from facebook import post_photo
 from setup_fonts import download as ensure_font
 
@@ -476,37 +476,26 @@ async def api_auto_generate(theme: str = Form(...)):
             image_url = card_info.get("image_url")
             yield _e({"t": "log", "m": f"AI: {name}"})
 
-            # 3. Generate complete news card with Gemini Imagen
-            card_path = CARDS / f"{card_id}_auto.jpg"
-            card_prompt = (
-                f"Professional BBC/CNN style news card image. "
-                f"Dark gradient background. "
-                f"Headline: {name}. "
-                f"Subtext: {text}. "
-                f"Modern news graphics design. Red accent color. "
-                f"1080x1350 portrait format. High quality."
-            )
-            yield _e({"t": "log", "m": "Gemini generating card..."})
-            gen_path = await asyncio.to_thread(
-                _generate_image_gemini, card_prompt, str(card_path)
-            )
-
-            # Fallback: if Gemini fails, download image and use template
-            if not gen_path:
-                yield _e({"t": "log", "m": "Gemini failed, using template..."})
-                photo_path = None
-                if image_url:
-                    photo_path = await asyncio.to_thread(
-                        download_image, image_url, f"temp/auto_{card_id}.jpg"
-                    )
-                if not photo_path:
-                    photo_path = await asyncio.to_thread(create_placeholder)
-                    yield _e({"t": "log", "m": "Using placeholder image"})
-
-                yield _e({"t": "log", "m": "Generating card..."})
-                await asyncio.to_thread(
-                    generator.generate, photo_path, name, text, str(card_path)
+            # 3. Download image from Tavily results
+            photo_path = None
+            if image_url:
+                yield _e({"t": "log", "m": "Downloading image..."})
+                photo_path = await asyncio.to_thread(
+                    download_image, image_url, f"temp/auto_{card_id}.jpg"
                 )
+                if photo_path:
+                    yield _e({"t": "log", "m": "Image downloaded OK"})
+
+            if not photo_path:
+                yield _e({"t": "log", "m": "No image found, using placeholder..."})
+                photo_path = await asyncio.to_thread(create_placeholder)
+
+            # 4. Generate card with Pillow (simple design, Georgian text)
+            yield _e({"t": "log", "m": "Creating card..."})
+            card_path = CARDS / f"{card_id}_auto.jpg"
+            await asyncio.to_thread(
+                generate_auto_card, photo_path, name, text, str(card_path)
+            )
 
             # 4. Facebook upload in background
             asyncio.create_task(asyncio.to_thread(_upload_and_notify, str(card_path), name))
@@ -558,13 +547,14 @@ def _upload_and_notify(card_path: str, name: str):
 def _ai_pick_story(results: list[dict]) -> dict:
     """Send search results to Kimi / Claude → {name, text, image_url}."""
     prompt = (
-        "You are given news search results. Pick the MOST interesting story and extract:\n"
-        "- name: person name or short topic headline (max 40 chars)\n"
-        "- text: 1-2 sentence summary (max 120 chars)\n"
+        "You are a Georgian news editor. Pick the MOST interesting story and extract:\n"
+        "IMPORTANT: Write EVERYTHING in Georgian language (ქართული ენა)!\n"
+        "- name: headline in Georgian (max 40 chars)\n"
+        "- text: summary in Georgian 1-2 sentences (max 120 chars)\n"
         "- image_url: a URL from the results that likely contains an image, or null\n\n"
         "Results:\n" + json.dumps(results, ensure_ascii=False) + "\n\n"
         "Reply ONLY with valid JSON:\n"
-        '{"name":"…","text":"…","image_url":"… or null"}'
+        '{"name":"სათაური ქართულად","text":"შეჯამება ქართულად","image_url":"… or null"}'
     )
 
     backend = os.environ.get("BACKEND", "claude").lower()
@@ -637,10 +627,10 @@ def _pick_gemini(tavily_res: dict) -> dict:
     images = tavily_res.get("images", [])
 
     prompt = (
-        "You are a news editor. Pick the MOST interesting story from these results.\n"
-        "Write the summary IN GEORGIAN (ქართული ენა).\n"
+        "You are a Georgian news editor. Pick the MOST interesting story from these results.\n"
+        "IMPORTANT: Write EVERYTHING in Georgian language (ქართული ენა)!\n"
         "Reply ONLY with valid JSON, no other text:\n"
-        '{"name":"headline 3-4 words","text":"summary in Georgian 30-40 words","image_url":"best image URL or null"}\n\n'
+        '{"name":"სათაური ქართულად 3-4 სიტყვა","text":"შეჯამება ქართულად 30-40 სიტყვა","image_url":"best image URL or null"}\n\n'
         "Results:\n" + "\n".join(lines) + "\n\n"
         "Available image URLs:\n" + "\n".join(images[:10] or ["none"]) + "\n"
     )

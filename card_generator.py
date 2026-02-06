@@ -355,3 +355,135 @@ def generate_card_from_url_sync(
     if _generator_instance is None:
         _generator_instance = CardGenerator(logo_path=logo_path)
     return _generator_instance.generate_from_url(image_url, name, text, output_path)
+
+
+# ---------------------------------------------------------------------------
+# Pillow-based Auto Card Generator (for auto-generate, no HTML template)
+# ---------------------------------------------------------------------------
+def generate_auto_card(
+    photo_path: str,
+    name: str,
+    text: str,
+    output_path: str,
+) -> str:
+    """
+    Generate a simple news card using Pillow.
+    Used for auto-generate flow (not the HTML template).
+
+    Args:
+        photo_path: Path to the photo file
+        name: Headline/name (Georgian)
+        text: Description text (Georgian)
+        output_path: Where to save the card
+
+    Returns:
+        output_path
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    # Constants
+    W, H = 1080, 1350
+    ACCENT_RED = (229, 57, 53)
+    WHITE = (255, 255, 255)
+
+    # Load and resize photo to cover
+    img = Image.open(photo_path).convert("RGBA")
+    ratio = max(W / img.width, H / img.height)
+    nw, nh = int(img.width * ratio), int(img.height * ratio)
+    img = img.resize((nw, nh), Image.LANCZOS)
+    left = (nw - W) // 2
+    top = (nh - H) // 2
+    img = img.crop((left, top, left + W, top + H))
+
+    # Dark gradient overlay (bottom 70%)
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw_ov = ImageDraw.Draw(overlay)
+    gradient_start = int(H * 0.3)
+    for y in range(gradient_start, H):
+        alpha = int(220 * ((y - gradient_start) / (H - gradient_start)))
+        draw_ov.rectangle([0, y, W, y + 1], fill=(13, 18, 30, alpha))
+    img = Image.alpha_composite(img, overlay)
+
+    # Load font
+    font_path = Path(__file__).parent / "fonts" / "NotoSansGeorgian.ttf"
+    if not font_path.exists():
+        try:
+            from setup_fonts import download
+            download()
+        except Exception:
+            pass
+
+    if font_path.exists():
+        name_font = ImageFont.truetype(str(font_path), 54)
+        text_font = ImageFont.truetype(str(font_path), 28)
+    else:
+        name_font = ImageFont.load_default()
+        text_font = ImageFont.load_default()
+
+    draw = ImageDraw.Draw(img)
+
+    # Text wrapping helper
+    def wrap_text(txt, font, max_width):
+        words = txt.split()
+        lines = []
+        current = ""
+        for word in words:
+            test = f"{current} {word}".strip()
+            bbox = font.getbbox(test)
+            if bbox[2] <= max_width:
+                current = test
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    # Layout
+    pad_left = 60
+    pad_right = 60
+    pad_bottom = 80
+    bar_height = 20
+    max_text_width = W - pad_left - pad_right
+
+    # Wrap text
+    name_upper = name.upper()
+    text_lines = wrap_text(text, text_font, max_text_width)
+
+    # Calculate positions from bottom
+    text_height = len(text_lines) * 42  # line height
+    name_bbox = name_font.getbbox(name_upper)
+    name_height = name_bbox[3] - name_bbox[1]
+
+    total_content_height = name_height + 20 + text_height  # 20px gap
+    content_top = H - pad_bottom - bar_height - total_content_height
+
+    # Draw red square + name
+    square_size = 20
+    square_y = content_top + (name_height - square_size) // 2
+    draw.rectangle(
+        [pad_left, square_y, pad_left + square_size, square_y + square_size],
+        fill=ACCENT_RED
+    )
+
+    # Name with shadow
+    name_x = pad_left + square_size + 15
+    draw.text((name_x + 2, content_top + 2), name_upper, fill=(0, 0, 0, 150), font=name_font)
+    draw.text((name_x, content_top), name_upper, fill=WHITE, font=name_font)
+
+    # Description text
+    text_y = content_top + name_height + 20
+    for line in text_lines:
+        draw.text((pad_left + 2, text_y + 2), line, fill=(0, 0, 0, 100), font=text_font)
+        draw.text((pad_left, text_y), line, fill=WHITE, font=text_font)
+        text_y += 42
+
+    # Bottom red bar
+    draw.rectangle([0, H - bar_height, W, H], fill=ACCENT_RED)
+
+    # Save
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(output_path, "JPEG", quality=95)
+
+    return output_path
