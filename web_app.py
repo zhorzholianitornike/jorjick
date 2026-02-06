@@ -1300,47 +1300,68 @@ def _pick_openai_thinking(tavily_res: dict) -> dict:
 
     images = tavily_res.get("images", [])
 
-    prompt = (
-        "შენ ხარ CNN/BBC-ს დონის ქართველი ჟურნალისტი და კოპირაიტერი.\n"
-        "ამოცანა: აირჩიე ყველაზე აქტუალური კონკრეტული ამბავი და დაწერე სრულფასოვანი სტატია.\n\n"
-        "## name (სათაური):\n"
-        "- 3-5 სიტყვა, კონკრეტული და ყურადღების წამკიდე\n"
-        "- მაგ: 'OpenAI-მ GPT-5 წარადგინა', 'NASA-მ მარსზე წყალი აღმოაჩინა'\n\n"
-        "## text (სტატია):\n"
-        "- სრულფასოვანი სტატია, 150-250 სიტყვა\n"
-        "- პირველ აბზაცში: ვინ, რა, სად, როდის (მთავარი ფაქტი)\n"
-        "- მეორე აბზაცში: დეტალები, კონტექსტი, ექსპერტების მოსაზრებები\n"
-        "- მესამე აბზაცში: რას ნიშნავს ეს მომავლისთვის, შედეგები\n"
-        "- გამოიყენე პროფესიონალური ჟურნალისტური ენა\n"
-        "- მოქმედებითი ზმნები: 'გამოაცხადა', 'წარადგინა', 'აიკრძალა'\n"
-        "- არ გამოიყენო ენციკლოპედიური ენა\n\n"
-        "## image_url — აირჩიე რეალური ფოტო (არა ილუსტრაცია)\n\n"
+    # --- Step 1: Extract structured facts ---
+    facts_prompt = (
+        "შენ ხარ ნიუს რედაქტორი. აირჩიე ყველაზე საინტერესო ამბავი და ამოიღე ფაქტები.\n\n"
         "სტატიები:\n" + "\n".join(lines) + "\n\n"
         "ფოტოების URL-ები:\n" + "\n".join(images[:10] or ["none"]) + "\n\n"
         "უპასუხე მხოლოდ JSON-ით:\n"
-        '{"name":"სათაური","text":"სრული სტატია აქ...","image_url":"URL ან null"}'
+        '{"headline":"სათაური ქართულად 3-5 სიტყვა",'
+        '"who":"ვინ არის მთავარი მოქმედი პირი/ორგანიზაცია",'
+        '"what":"რა მოხდა (1 წინადადება)",'
+        '"where":"სად (ქალაქი/ქვეყანა ან null)",'
+        '"event_date":"თარიღი ან null",'
+        '"why_it_matters":"რატომ არის მნიშვნელოვანი (1 წინადადება)",'
+        '"confidence":85,'
+        '"image_url":"საუკეთესო რეალური ფოტოს URL ან null"}'
     )
 
     try:
-        resp = client.chat.completions.create(
+        # Step 1: facts
+        resp1 = client.chat.completions.create(
             model="o3-mini",
-            max_completion_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=2048,
+            messages=[{"role": "user", "content": facts_prompt}],
         )
-        raw = resp.choices[0].message.content or ""
+        raw1 = resp1.choices[0].message.content or ""
+        if "```" in raw1:
+            raw1 = raw1.split("```")[1]
+            if raw1.startswith("json"):
+                raw1 = raw1[4:]
+        facts = json.loads(raw1[raw1.index("{"):raw1.rindex("}") + 1])
 
-        # strip markdown code-block wrapper if present
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+        if facts.get("image_url") in (None, "null", ""):
+            facts["image_url"] = None
 
-        start = raw.index("{")
-        end   = raw.rindex("}")
-        data  = json.loads(raw[start:end + 1])
+        # --- Step 2: Generate Facebook caption from facts ---
+        caption_prompt = (
+            "You are a Georgian social media copywriter.\n"
+            "Write a Facebook caption based ONLY on the JSON facts below.\n\n"
+            "Constraints:\n"
+            "- 1 short hook line + 2-4 short sentences.\n"
+            "- Mention only facts present in JSON.\n"
+            "- If event_date is null, do NOT mention dates.\n"
+            "- Add 3-6 relevant hashtags. No spam.\n"
+            '- If confidence < 80, add "დეტალები ზუსტდება."\n\n'
+            "JSON:\n" + json.dumps(facts, ensure_ascii=False)
+        )
 
-        if data.get("image_url") in (None, "null", ""):
-            data["image_url"] = None
+        resp2 = client.chat.completions.create(
+            model="o3-mini",
+            max_completion_tokens=2048,
+            messages=[{"role": "user", "content": caption_prompt}],
+        )
+        caption = resp2.choices[0].message.content or ""
+        # clean up any markdown wrapping
+        caption = caption.strip().strip("`").strip()
+        if caption.startswith("json"):
+            caption = caption[4:].strip()
+
+        data = {
+            "name": facts.get("headline", "Unknown"),
+            "text": caption,
+            "image_url": facts.get("image_url"),
+        }
 
         return data
 
