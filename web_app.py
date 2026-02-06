@@ -1306,49 +1306,26 @@ def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
         return False
 
     try:
-        # Configure git credentials if on Railway
-        if os.environ.get("RAILWAY_ENVIRONMENT"):
-            github_token = os.environ.get("GITHUB_TOKEN")
-            if github_token:
-                subprocess.run(
-                    ["git", "config", "--local", "credential.helper", "store"],
-                    capture_output=True,
-                    cwd=repo_dir,
-                    timeout=2
-                )
-                # Setup credentials
-                subprocess.run(
-                    ["git", "config", "--local", "user.name", "Railway Bot"],
-                    capture_output=True,
-                    cwd=repo_dir,
-                    timeout=2
-                )
-                subprocess.run(
-                    ["git", "config", "--local", "user.email", "bot@railway.app"],
-                    capture_output=True,
-                    cwd=repo_dir,
-                    timeout=2
-                )
+        github_token = os.environ.get("GITHUB_TOKEN")
+
+        # Configure git
+        subprocess.run(["git", "config", "user.name", "Railway Bot"],
+                        capture_output=True, cwd=repo_dir, timeout=2)
+        subprocess.run(["git", "config", "user.email", "bot@railway.app"],
+                        capture_output=True, cwd=repo_dir, timeout=2)
 
         # Add the specific file
         subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=repo_dir, timeout=5)
         # Commit with message
         subprocess.run(
             ["git", "commit", "-m", commit_message],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=repo_dir,
-            timeout=5
+            check=True, capture_output=True, text=True, cwd=repo_dir, timeout=5
         )
-        # Push to remote (credentials already configured)
-        push_result = subprocess.run(
-            ["git", "push"],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=repo_dir,
-            timeout=15
+        # Push with token URL (works even without upstream set)
+        push_url = f"https://zhorzholianitornike:{github_token}@github.com/zhorzholianitornike/jorjick.git" if github_token else "origin"
+        subprocess.run(
+            ["git", "push", push_url, "HEAD:main"],
+            check=True, capture_output=True, text=True, cwd=repo_dir, timeout=15
         )
         print(f"[Git] ✓ {file_path} committed and pushed")
         return True
