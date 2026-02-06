@@ -623,12 +623,29 @@ async def api_generate(
     text:  str = Form(...),
 ):
     card_id    = uuid.uuid4().hex[:8]
-    photo_path = UPLOADS / f"{card_id}.jpg"
     card_path  = CARDS   / f"{card_id}_card.jpg"
 
     # determine photo source: upload or library
     if photo and photo.filename:
-        # save uploaded photo
+        # save uploaded photo to library (photos/) folder to persist across redeployments
+        import re
+        safe_name = name.strip().replace(' ', '_')
+        # remove unsafe characters but keep Georgian Unicode
+        safe_name = re.sub(r'[<>:"/\\|?*]', '', safe_name)  # only remove filesystem-unsafe chars
+        if not safe_name:
+            safe_name = f"person_{card_id}"
+
+        # determine file extension from uploaded file
+        file_ext = Path(photo.filename).suffix or ".jpg"
+
+        # ensure unique filename
+        photo_path = PHOTOS / f"{safe_name}{file_ext}"
+        counter = 1
+        while photo_path.exists():
+            photo_path = PHOTOS / f"{safe_name}_{counter}{file_ext}"
+            counter += 1
+
+        # save to photos/ folder (persistent)
         photo_path.write_bytes(await photo.read())
         use_lib = False
     elif lib_photo:
@@ -649,8 +666,8 @@ async def api_generate(
             photo_path.unlink(missing_ok=True)
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
-    if not use_lib:
-        photo_path.unlink(missing_ok=True)  # remove uploaded temp file
+    # Don't delete the photo — it's now in the photos/ library!
+    # (only delete if generation failed, handled in except block above)
 
     # No auto-upload — user clicks "Upload to Facebook" button
     _add_history(name, f"/cards/{card_id}_card.jpg")
@@ -685,10 +702,10 @@ async def api_upload_library(photo: UploadFile = File(...)):
     if not photo.filename:
         return JSONResponse(status_code=400, content={"error": "No file provided"})
 
-    # sanitize filename
+    # sanitize filename - keep Georgian Unicode, only remove filesystem-unsafe chars
     import re
-    safe_name = re.sub(r'[^\w\s.-]', '', photo.filename)
-    safe_name = safe_name.replace(' ', '_')
+    safe_name = photo.filename.replace(' ', '_')
+    safe_name = re.sub(r'[<>:"/\\|?*]', '', safe_name)  # remove only unsafe chars
 
     # ensure unique filename
     photo_path = PHOTOS / safe_name
@@ -709,13 +726,12 @@ async def api_upload_library(photo: UploadFile = File(...)):
 @app.post("/api/delete-library")
 async def api_delete_library(photo_name: str = Form(...)):
     """Delete a photo from the library folder."""
-    import re
-    # sanitize to prevent path traversal
-    safe_name = re.sub(r'[^\w\s.-]', '', photo_name)
+    # no need to sanitize - we're searching within PHOTOS folder only
+    safe_name = photo_name.strip()
 
     # find the photo file (could be jpg, jpeg, png, webp)
     photo_path = None
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG", ".PNG", ".WEBP"):
         candidate = PHOTOS / f"{safe_name}{ext}"
         if candidate.exists():
             photo_path = candidate
@@ -735,10 +751,11 @@ async def api_delete_library(photo_name: str = Form(...)):
 async def api_rename_library(old_name: str = Form(...), new_name: str = Form(...)):
     """Rename a photo in the library folder."""
     import re
-    # sanitize both names
-    safe_old = re.sub(r'[^\w\s.-]', '', old_name)
-    safe_new = re.sub(r'[^\w\s.-]', '', new_name)
-    safe_new = safe_new.replace(' ', '_')
+    # sanitize names - keep Georgian Unicode, only remove filesystem-unsafe characters
+    safe_old = old_name.strip()
+    safe_new = new_name.strip().replace(' ', '_')
+    # remove only filesystem-unsafe characters: < > : " / \ | ? *
+    safe_new = re.sub(r'[<>:"/\\|?*]', '', safe_new)
 
     if not safe_new:
         return JSONResponse(status_code=400, content={"error": "Invalid new name"})
@@ -746,7 +763,7 @@ async def api_rename_library(old_name: str = Form(...), new_name: str = Form(...
     # find the old photo file
     old_path = None
     ext = None
-    for e in (".jpg", ".jpeg", ".png", ".webp"):
+    for e in (".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG", ".PNG", ".WEBP"):
         candidate = PHOTOS / f"{safe_old}{e}"
         if candidate.exists():
             old_path = candidate
@@ -754,7 +771,7 @@ async def api_rename_library(old_name: str = Form(...), new_name: str = Form(...
             break
 
     if not old_path:
-        return JSONResponse(status_code=404, content={"error": "Photo not found"})
+        return JSONResponse(status_code=404, content={"error": f"Photo not found: {safe_old}"})
 
     # ensure new name is unique
     new_path = PHOTOS / f"{safe_new}{ext}"
