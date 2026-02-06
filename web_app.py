@@ -1813,6 +1813,7 @@ async def _run_telegram():
         fallbacks=[CommandHandler("cancel", tg_cancel)],
     ))
 
+    await tg.initialize()
     await tg.start()
     await tg.updater.start_polling()
     print("[>>] Telegram bot is polling …")
