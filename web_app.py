@@ -324,11 +324,17 @@ DASHBOARD = """<!DOCTYPE html>
     <button class="btn" id="btn-auto" onclick="autoGen()">გენერაცია</button>
     <div class="spin" id="spin-auto"></div>
     <div class="result" id="res-auto">
-      <img id="res-auto-img" alt="">
+      <img id="res-auto-img" alt="" style="max-width:400px">
       <br>
       <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ Download</a>
       <br>
       <button class="btn-fb" id="btn-fb-auto" onclick="uploadFB('res-auto')">📘 Upload to Facebook</button>
+    </div>
+    <div id="auto-article" style="display:none;margin-top:16px;background:#151620;border:1px solid #2d3148;border-radius:8px;padding:20px;">
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">სტატია</div>
+      <h3 id="auto-article-title" style="font-size:18px;color:#fff;margin-bottom:12px"></h3>
+      <div id="auto-article-text" style="font-size:14px;color:#cbd5e1;line-height:1.7;white-space:pre-wrap"></div>
+      <button onclick="copyArticle()" style="margin-top:12px;padding:8px 16px;background:#2d3148;color:#94a3b8;border:1px solid #3d4158;border-radius:5px;font-size:12px;cursor:pointer">📋 კოპირება</button>
     </div>
     <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
   </div>
@@ -353,6 +359,7 @@ DASHBOARD = """<!DOCTYPE html>
   let   lastCardName = '';   // store last generated card name
   let   lastAutoUrl  = '';   // store last auto-generated card URL
   let   lastAutoName = '';   // store last auto-generated card name
+  let   lastAutoArticle = '';  // store last auto-generated article text
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ── photo library ──────────────────────────────────────────────────
@@ -554,6 +561,7 @@ DASHBOARD = """<!DOCTYPE html>
     spin.style.display  = 'block';
     resEl.style.display = 'none';
     logEl.innerHTML     = '';
+    document.getElementById('auto-article').style.display = 'none';
 
     const fd = new FormData();
     fd.append('theme', theme);
@@ -588,7 +596,14 @@ DASHBOARD = """<!DOCTYPE html>
               document.getElementById('btn-fb-auto').disabled = false;
               lastAutoUrl  = evt.card_url;
               lastAutoName = evt.name || '';
+              lastAutoArticle = evt.article || '';
               resEl.style.display = 'block';
+              // show article
+              if (evt.article) {
+                document.getElementById('auto-article-title').textContent = evt.name || '';
+                document.getElementById('auto-article-text').textContent = evt.article;
+                document.getElementById('auto-article').style.display = 'block';
+              }
               loadHistory();
             }
           } catch(_) {}
@@ -672,6 +687,15 @@ DASHBOARD = """<!DOCTYPE html>
       toast('Network error: ' + e.message);
       btn.disabled = false;
     }
+  };
+
+  // ── copy article ─────────────────────────────────────────────────
+  window.copyArticle = function() {
+    const title = document.getElementById('auto-article-title').textContent;
+    const text = document.getElementById('auto-article-text').textContent;
+    navigator.clipboard.writeText(title + '\\n\\n' + text).then(() => {
+      toast('სტატია კოპირებულია!', 'success');
+    });
   };
 
   // ── toast helper ──────────────────────────────────────────────────
@@ -1048,18 +1072,18 @@ async def api_auto_generate(theme: str = Form(...)):
                 yield _e({"t": "log", "m": "Using placeholder..."})
                 photo_path = await asyncio.to_thread(create_placeholder)
 
-            # 4. Generate card with Pillow (simple design, Georgian text)
-            yield _e({"t": "log", "m": "Creating card..."})
+            # 4. Save photo as card (no text overlay — just the photo)
+            yield _e({"t": "log", "m": "Saving card..."})
             card_path = CARDS / f"{card_id}_auto.jpg"
             await asyncio.to_thread(
-                generate_auto_card, photo_path, name, text, str(card_path)
+                _save_photo_as_card, photo_path, str(card_path)
             )
 
             # No auto-upload — user clicks "Upload to Facebook" button
             card_url = f"/cards/{card_id}_auto.jpg"
             _add_history(name, card_url)
-            yield _e({"t": "log", "m": "Card ready! Click button to upload to Facebook"})
-            yield _e({"t": "done", "card_url": card_url, "name": name})
+            yield _e({"t": "log", "m": "Ready!"})
+            yield _e({"t": "done", "card_url": card_url, "name": name, "article": text})
 
         except Exception as exc:
             yield _e({"t": "err", "m": str(exc)})
@@ -1268,31 +1292,30 @@ def _pick_openai_thinking(tavily_res: dict) -> dict:
     images = tavily_res.get("images", [])
 
     prompt = (
-        "შენ ხარ CNN/BBC-ს დონის ქართველი ნიუს რედაქტორი.\n"
-        "ამოცანა: აირჩიე ყველაზე აქტუალური კონკრეტული ამბავი (არა ზოგადი თემა!) და დაწერე:\n\n"
-        "## name (სათაური) — წესები:\n"
-        "- მაქსიმუმ 3-4 სიტყვა\n"
-        "- კონკრეტული ფაქტი ან სახელი, არა ზოგადი აღწერა\n"
-        "- მაგალითი კარგი: 'OpenAI GPT-5 გამოაცხადა', 'მასკმა Twitter-ი გაყიდა'\n"
-        "- მაგალითი ცუდი: 'ხელოვნური ინტელექტი და გავრცელება', 'ტექნოლოგიების განვითარება'\n\n"
-        "## text (აღწერა) — წესები:\n"
-        "- 1-2 მოკლე წინადადება, მაქსიმუმ 25 სიტყვა\n"
-        "- დაიწყე კონკრეტული ფაქტით: ვინ, რა, სად, როდის\n"
-        "- არ გამოიყენო ენციკლოპედიური ენა ('გამოიყენება', 'წარმოადგენს')\n"
-        "- გამოიყენე მოქმედებითი ზმნები: 'გამოაცხადა', 'შეცვალა', 'აიკრძალა'\n"
-        "- მაგალითი კარგი: 'OpenAI-მ ახალი მოდელი წარადგინა, რომელიც ადამიანის დონეზე ფიქრობს.'\n"
-        "- მაგალითი ცუდი: 'AI დღეს ფართოდ გამოიყენება ავტომატიზაციაში და სხვადასხვა სისტემებში.'\n\n"
-        "## image_url — აირჩიე რეალური ფოტო (არა ილუსტრაცია/ინფოგრაფიკა)\n\n"
+        "შენ ხარ CNN/BBC-ს დონის ქართველი ჟურნალისტი და კოპირაიტერი.\n"
+        "ამოცანა: აირჩიე ყველაზე აქტუალური კონკრეტული ამბავი და დაწერე სრულფასოვანი სტატია.\n\n"
+        "## name (სათაური):\n"
+        "- 3-5 სიტყვა, კონკრეტული და ყურადღების წამკიდე\n"
+        "- მაგ: 'OpenAI-მ GPT-5 წარადგინა', 'NASA-მ მარსზე წყალი აღმოაჩინა'\n\n"
+        "## text (სტატია):\n"
+        "- სრულფასოვანი სტატია, 150-250 სიტყვა\n"
+        "- პირველ აბზაცში: ვინ, რა, სად, როდის (მთავარი ფაქტი)\n"
+        "- მეორე აბზაცში: დეტალები, კონტექსტი, ექსპერტების მოსაზრებები\n"
+        "- მესამე აბზაცში: რას ნიშნავს ეს მომავლისთვის, შედეგები\n"
+        "- გამოიყენე პროფესიონალური ჟურნალისტური ენა\n"
+        "- მოქმედებითი ზმნები: 'გამოაცხადა', 'წარადგინა', 'აიკრძალა'\n"
+        "- არ გამოიყენო ენციკლოპედიური ენა\n\n"
+        "## image_url — აირჩიე რეალური ფოტო (არა ილუსტრაცია)\n\n"
         "სტატიები:\n" + "\n".join(lines) + "\n\n"
         "ფოტოების URL-ები:\n" + "\n".join(images[:10] or ["none"]) + "\n\n"
         "უპასუხე მხოლოდ JSON-ით:\n"
-        '{"name":"კონკრეტული სათაური","text":"კონკრეტული აღწერა","image_url":"URL ან null"}'
+        '{"name":"სათაური","text":"სრული სტატია აქ...","image_url":"URL ან null"}'
     )
 
     try:
         resp = client.chat.completions.create(
             model="o3-mini",
-            max_completion_tokens=1024,
+            max_completion_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.choices[0].message.content or ""
@@ -1397,6 +1420,27 @@ def _generate_image_gemini(prompt: str, dest: str) -> Optional[str]:
     except Exception as exc:
         print(f"[GenImg] {exc}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# Save photo as card (just resize/crop, no text overlay)
+# ---------------------------------------------------------------------------
+def _save_photo_as_card(photo_path: str, output_path: str) -> str:
+    """Resize and crop photo to card dimensions (1080x1350). No text overlay."""
+    from PIL import Image
+
+    W, H = 1080, 1350
+    img = Image.open(photo_path).convert("RGB")
+    ratio = max(W / img.width, H / img.height)
+    nw, nh = int(img.width * ratio), int(img.height * ratio)
+    img = img.resize((nw, nh), Image.LANCZOS)
+    left = (nw - W) // 2
+    top = (nh - H) // 2
+    img = img.crop((left, top, left + W, top + H))
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    img.save(output_path, "JPEG", quality=95)
+    return output_path
 
 
 # ---------------------------------------------------------------------------
