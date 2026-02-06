@@ -436,6 +436,38 @@ DASHBOARD = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- news auto-scraper control panel -->
+  <div class="panel">
+    <h2>4 — ავტო-სიახლეები 📰 <span style="font-size:11px;color:#64748b;font-weight:400">[interpressnews.ge]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">interpressnews.ge/politika → Telegram დასტური → Facebook</p>
+
+    <div class="row">
+      <div class="g"><label>ინტერვალი (წუთებში)</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="number" id="inp-news-interval" min="5" max="1440" value="15"
+            style="width:100px;background:#151620;border:1px solid #2d3148;border-radius:7px;padding:9px 12px;color:#e2e8f0;font-size:16px;text-align:center;">
+          <span style="color:#64748b;font-size:12px;" id="interval-label">ყოველ 15 წუთში</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
+      <button onclick="setNewsInterval(5)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">5 წთ</button>
+      <button onclick="setNewsInterval(15)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">15 წთ</button>
+      <button onclick="setNewsInterval(30)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">30 წთ</button>
+      <button onclick="setNewsInterval(45)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">45 წთ</button>
+      <button onclick="setNewsInterval(60)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">1 სთ</button>
+      <button onclick="setNewsInterval(120)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">2 სთ</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn" onclick="applyNewsInterval()" style="flex:1;">⏱ ინტერვალის შეცვლა</button>
+      <button class="btn" onclick="sendTestNews()" style="flex:1;background:#1a5c2e;">📰 სატესტო გაგზავნა</button>
+    </div>
+    <div class="spin" id="spin-news"></div>
+    <div class="result" id="res-news"></div>
+  </div>
+
   <!-- history -->
   <div class="history">
     <h2>Recent Cards</h2>
@@ -927,6 +959,75 @@ DASHBOARD = """<!DOCTYPE html>
     setTimeout(() => t.style.display = 'none', 5000);
   };
 
+  // ── news interval control ────────────────────────────────────────
+  window.setNewsInterval = function(min) {
+    document.getElementById('inp-news-interval').value = min;
+    updateIntervalLabel(min);
+  };
+
+  function updateIntervalLabel(min) {
+    const lbl = document.getElementById('interval-label');
+    if (min >= 60) {
+      const h = Math.floor(min/60), m = min%60;
+      lbl.textContent = 'ყოველ ' + h + ' საათ' + (m ? ' ' + m + ' წუთში' : 'ში');
+    } else {
+      lbl.textContent = 'ყოველ ' + min + ' წუთში';
+    }
+  }
+
+  document.getElementById('inp-news-interval').addEventListener('input', function() {
+    updateIntervalLabel(parseInt(this.value) || 15);
+  });
+
+  window.applyNewsInterval = async function() {
+    const min = parseInt(document.getElementById('inp-news-interval').value) || 15;
+    const res = document.getElementById('res-news');
+    try {
+      const r = await fetch('/api/news-interval', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({minutes: min})
+      });
+      const d = await r.json();
+      if (d.success) {
+        res.innerHTML = '<span style="color:#4ade80">✅ ინტერვალი შეიცვალა: ყოველ ' + d.minutes + ' წუთში</span>';
+        toast('ინტერვალი: ' + d.minutes + ' წუთი', 'success');
+      } else {
+        res.innerHTML = '<span style="color:#ef4444">შეცდომა</span>';
+      }
+    } catch(e) {
+      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+    }
+  };
+
+  window.sendTestNews = async function() {
+    const spin = document.getElementById('spin-news');
+    const res = document.getElementById('res-news');
+    spin.style.display = 'block';
+    res.innerHTML = '';
+    try {
+      const r = await fetch('/api/test-news', {method:'POST'});
+      const d = await r.json();
+      spin.style.display = 'none';
+      if (d.success) {
+        res.innerHTML = '<span style="color:#4ade80">📰 გაგზავნილია: ' + d.title.substring(0,60) + '...</span>';
+        toast('სიახლე გაგზავნილია Telegram-ზე!', 'success');
+      } else {
+        res.innerHTML = '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>';
+      }
+    } catch(e) {
+      spin.style.display = 'none';
+      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+    }
+  };
+
+  // Load current interval on page load
+  fetch('/api/news-interval').then(r=>r.json()).then(d=>{
+    const min = Math.round(d.interval / 60);
+    document.getElementById('inp-news-interval').value = min;
+    updateIntervalLabel(min);
+  });
+
   // ── voice generation ──────────────────────────────────────────────
   const voiceText = document.getElementById('inp-voice-text');
   const charCount = document.getElementById('char-count');
@@ -1398,6 +1499,23 @@ async def api_upload_facebook(
         return {"success": True}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+
+@app.get("/api/news-interval")
+async def api_get_news_interval():
+    """Get current news scraping interval."""
+    return {"interval": _news_interval}
+
+
+@app.post("/api/news-interval")
+async def api_set_news_interval(request: dict):
+    """Set news scraping interval in minutes."""
+    global _news_interval
+    minutes = request.get("minutes", 15)
+    minutes = max(5, min(1440, int(minutes)))  # clamp 5min–24h
+    _news_interval = minutes * 60
+    print(f"[News] Interval changed to {minutes} min ({_news_interval}s)")
+    return {"success": True, "minutes": minutes, "seconds": _news_interval}
 
 
 @app.post("/api/test-news")
@@ -1911,6 +2029,7 @@ def _add_history(name: str, card_url: str):
 # ---------------------------------------------------------------------------
 _pending_news: dict = {}       # {news_id: {title, url, image_url, time}}
 _seen_news_urls: set = set()   # already sent/processed URLs
+_news_interval: int = 900      # seconds between news checks (default 15 min)
 
 
 def _scrape_interpressnews() -> list[dict]:
@@ -2410,15 +2529,15 @@ async def _auto_news_loop():
 
     # Wait 60s on startup to let Telegram bot initialize first
     await asyncio.sleep(60)
-    print("[News] Auto-news loop started (every 15 min)")
+    print(f"[News] Auto-news loop started (every {_news_interval}s)")
 
     while True:
         try:
             articles = await asyncio.to_thread(_scrape_interpressnews)
 
             if not articles:
-                print("[News] No articles found, retrying in 15 min")
-                await asyncio.sleep(900)
+                print(f"[News] No articles found, retrying in {_news_interval}s")
+                await asyncio.sleep(_news_interval)
                 continue
 
             # Find first unseen article
@@ -2429,8 +2548,8 @@ async def _auto_news_loop():
                     break
 
             if not chosen:
-                print("[News] All articles already seen, retrying in 15 min")
-                await asyncio.sleep(900)
+                print(f"[News] All articles already seen, retrying in {_news_interval}s")
+                await asyncio.sleep(_news_interval)
                 continue
 
             # Mark as seen and store as pending
@@ -2445,7 +2564,7 @@ async def _auto_news_loop():
         except Exception as exc:
             print(f"[News] Loop error: {exc}")
 
-        await asyncio.sleep(900)  # 15 minutes
+        await asyncio.sleep(_news_interval)
 
 
 # ---------------------------------------------------------------------------
