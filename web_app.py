@@ -152,13 +152,22 @@ DASHBOARD = """<!DOCTYPE html>
                  border-radius:5px; font-size:11px; cursor:pointer; transition:all .2s; }
   .lib-upload-btn:hover { background:#3d4158; color:#e2e8f0; border-color:#4d5168; }
   .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
-  .lib-item    { text-align:center; cursor:pointer; }
+  .lib-item    { text-align:center; position:relative; }
   .lib-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
-                 border:2px solid transparent; transition:border-color .2s, transform .1s; }
+                 border:2px solid transparent; transition:border-color .2s, transform .1s; cursor:pointer; }
   .lib-item:hover img { border-color:#1e94b9; transform:scale(1.02); }
   .lib-item.selected img { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
   .lib-item .lib-name { font-size:10px; color:#94a3b8; margin-top:4px; overflow:hidden;
-                 text-overflow:ellipsis; white-space:nowrap; }
+                 text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+  .lib-actions { position:absolute; top:4px; right:4px; display:none; gap:4px; }
+  .lib-item:hover .lib-actions { display:flex; }
+  .lib-action-btn { width:24px; height:24px; border-radius:4px; border:none; cursor:pointer;
+                 font-size:12px; display:flex; align-items:center; justify-content:center;
+                 transition:all .2s; }
+  .lib-action-btn.rename { background:rgba(30,148,185,0.9); color:#fff; }
+  .lib-action-btn.rename:hover { background:rgba(30,148,185,1); }
+  .lib-action-btn.delete { background:rgba(239,68,68,0.9); color:#fff; }
+  .lib-action-btn.delete:hover { background:rgba(239,68,68,1); }
   .lib-empty   { color:#64748b; font-size:12px; text-align:center; padding:20px;
                  background:#151620; border-radius:6px; }
   .or-divider  { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
@@ -293,8 +302,14 @@ DASHBOARD = """<!DOCTYPE html>
       photos.forEach(p => {
         const item = document.createElement('div');
         item.className = 'lib-item';
-        item.innerHTML = '<img src="'+p.url+'" alt="'+p.name+'"><div class="lib-name">'+p.name.replace(/_/g,' ')+'</div>';
-        item.onclick = () => selectLibPhoto(p.url, p.name, item);
+        item.innerHTML = `
+          <div class="lib-actions">
+            <button class="lib-action-btn rename" onclick="renamePhoto('${p.name}'); event.stopPropagation();" title="გადარქმევა">✏️</button>
+            <button class="lib-action-btn delete" onclick="deletePhoto('${p.name}'); event.stopPropagation();" title="წაშლა">🗑️</button>
+          </div>
+          <img src="${p.url}" alt="${p.name}" onclick="selectLibPhoto('${p.url}', '${p.name}', this.parentElement)">
+          <div class="lib-name" onclick="selectLibPhoto('${p.url}', '${p.name}', this.parentElement)">${p.name.replace(/_/g,' ')}</div>
+        `;
         grid.appendChild(item);
       });
     } catch(e) {
@@ -325,7 +340,7 @@ DASHBOARD = """<!DOCTYPE html>
     }
   });
 
-  function selectLibPhoto(url, name, itemEl) {
+  window.selectLibPhoto = function(url, name, itemEl) {
     // clear previous selection
     document.querySelectorAll('.lib-item').forEach(el => el.classList.remove('selected'));
     // clear file upload
@@ -338,7 +353,51 @@ DASHBOARD = """<!DOCTYPE html>
     libPhoto = url;
     // auto-fill name field with photo name
     document.getElementById('inp-name').value = name.replace(/_/g, ' ');
-  }
+  };
+
+  // delete photo from library
+  window.deletePhoto = async function(photoName) {
+    if (!confirm('წაშალოთ ფოტო: ' + photoName.replace(/_/g, ' ') + '?')) return;
+
+    const fd = new FormData();
+    fd.append('photo_name', photoName);
+
+    try {
+      const r = await fetch('/api/delete-library', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (data.success) {
+        toast('ფოტო წაშლილია!');
+        loadLibrary();  // reload library
+      } else {
+        toast('შეცდომა: ' + (data.error || 'unknown'));
+      }
+    } catch(err) {
+      toast('ნეტვორკის შეცდომა: ' + err.message);
+    }
+  };
+
+  // rename photo in library
+  window.renamePhoto = async function(oldName) {
+    const newName = prompt('ახალი სახელი:', oldName.replace(/_/g, ' '));
+    if (!newName || newName.trim() === '') return;
+
+    const fd = new FormData();
+    fd.append('old_name', oldName);
+    fd.append('new_name', newName.trim());
+
+    try {
+      const r = await fetch('/api/rename-library', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (data.success) {
+        toast('ფოტო გადარქმდა!');
+        loadLibrary();  // reload library
+      } else {
+        toast('შეცდომა: ' + (data.error || 'unknown'));
+      }
+    } catch(err) {
+      toast('ნეტვორკის შეცდომა: ' + err.message);
+    }
+  };
 
   loadLibrary();
 
@@ -643,6 +702,70 @@ async def api_upload_library(photo: UploadFile = File(...)):
     try:
         photo_path.write_bytes(await photo.read())
         return {"success": True, "name": photo_path.stem, "url": f"/photos/{photo_path.name}"}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.post("/api/delete-library")
+async def api_delete_library(photo_name: str = Form(...)):
+    """Delete a photo from the library folder."""
+    import re
+    # sanitize to prevent path traversal
+    safe_name = re.sub(r'[^\w\s.-]', '', photo_name)
+
+    # find the photo file (could be jpg, jpeg, png, webp)
+    photo_path = None
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        candidate = PHOTOS / f"{safe_name}{ext}"
+        if candidate.exists():
+            photo_path = candidate
+            break
+
+    if not photo_path:
+        return JSONResponse(status_code=404, content={"error": "Photo not found"})
+
+    try:
+        photo_path.unlink()
+        return {"success": True}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.post("/api/rename-library")
+async def api_rename_library(old_name: str = Form(...), new_name: str = Form(...)):
+    """Rename a photo in the library folder."""
+    import re
+    # sanitize both names
+    safe_old = re.sub(r'[^\w\s.-]', '', old_name)
+    safe_new = re.sub(r'[^\w\s.-]', '', new_name)
+    safe_new = safe_new.replace(' ', '_')
+
+    if not safe_new:
+        return JSONResponse(status_code=400, content={"error": "Invalid new name"})
+
+    # find the old photo file
+    old_path = None
+    ext = None
+    for e in (".jpg", ".jpeg", ".png", ".webp"):
+        candidate = PHOTOS / f"{safe_old}{e}"
+        if candidate.exists():
+            old_path = candidate
+            ext = e
+            break
+
+    if not old_path:
+        return JSONResponse(status_code=404, content={"error": "Photo not found"})
+
+    # ensure new name is unique
+    new_path = PHOTOS / f"{safe_new}{ext}"
+    counter = 1
+    while new_path.exists():
+        new_path = PHOTOS / f"{safe_new}_{counter}{ext}"
+        counter += 1
+
+    try:
+        old_path.rename(new_path)
+        return {"success": True, "name": new_path.stem, "url": f"/photos/{new_path.name}"}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
