@@ -65,6 +65,73 @@ app.mount("/photos", StaticFiles(directory=str(PHOTOS)), name="photos")
 
 
 # ---------------------------------------------------------------------------
+# Startup: Clone/Pull photos from GitHub (Railway)
+# ---------------------------------------------------------------------------
+@app.on_event("startup")
+async def startup_event():
+    """On Railway startup: clone/pull photos from GitHub."""
+    import subprocess
+    import os
+
+    github_token = os.environ.get("GITHUB_TOKEN")
+    railway_env = os.environ.get("RAILWAY_ENVIRONMENT")
+
+    # Only run on Railway with GITHUB_TOKEN
+    if not railway_env or not github_token:
+        print("[Startup] Not on Railway or no GITHUB_TOKEN - skipping git sync")
+        return
+
+    repo_url = f"https://zhorzholianitornike:{github_token}@github.com/zhorzholianitornike/jorjick.git"
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    git_dir = os.path.join(repo_dir, ".git")
+
+    try:
+        if not os.path.exists(git_dir):
+            # Clone repository
+            print("[Startup] Cloning repository...")
+            subprocess.run(
+                ["git", "clone", repo_url, "."],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+                timeout=30
+            )
+            print("[Startup] ✓ Repository cloned")
+        else:
+            # Pull latest changes
+            print("[Startup] Pulling latest changes...")
+            subprocess.run(
+                ["git", "config", "--local", "user.name", "Railway Bot"],
+                cwd=repo_dir,
+                capture_output=True,
+                timeout=5
+            )
+            subprocess.run(
+                ["git", "config", "--local", "user.email", "bot@railway.app"],
+                cwd=repo_dir,
+                capture_output=True,
+                timeout=5
+            )
+            subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+                timeout=20
+            )
+            print("[Startup] ✓ Repository updated")
+
+        # Ensure photos directory exists
+        PHOTOS.mkdir(exist_ok=True)
+        print(f"[Startup] ✓ Photos directory ready")
+
+    except subprocess.CalledProcessError as e:
+        print(f"[Startup] ✗ Git operation failed: {e.stderr if hasattr(e, 'stderr') else e}")
+    except Exception as e:
+        print(f"[Startup] ✗ Error: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Dashboard HTML  (single-page, no template engine needed)
 # ---------------------------------------------------------------------------
 DASHBOARD = """<!DOCTYPE html>
@@ -962,17 +1029,12 @@ async def api_auto_generate(theme: str = Form(...)):
 
 
 # ---------------------------------------------------------------------------
-# Git automation helper
+# Git automation helper (works on Railway with GITHUB_TOKEN)
 # ---------------------------------------------------------------------------
 def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
     """Auto-commit and push a file to GitHub. Returns True on success."""
     import subprocess
     import os
-
-    # Disable git operations on Railway (ephemeral filesystem + no credentials)
-    if os.environ.get("RAILWAY_ENVIRONMENT"):
-        print(f"[Git] ⚠ Railway detected - skipping git operations (use Railway Volumes instead)")
-        return False
 
     # Skip git operations if not available
     try:
@@ -992,6 +1054,30 @@ def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
         return False
 
     try:
+        # Configure git credentials if on Railway
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            github_token = os.environ.get("GITHUB_TOKEN")
+            if github_token:
+                subprocess.run(
+                    ["git", "config", "--local", "credential.helper", "store"],
+                    capture_output=True,
+                    cwd=repo_dir,
+                    timeout=2
+                )
+                # Setup credentials
+                subprocess.run(
+                    ["git", "config", "--local", "user.name", "Railway Bot"],
+                    capture_output=True,
+                    cwd=repo_dir,
+                    timeout=2
+                )
+                subprocess.run(
+                    ["git", "config", "--local", "user.email", "bot@railway.app"],
+                    capture_output=True,
+                    cwd=repo_dir,
+                    timeout=2
+                )
+
         # Add the specific file
         subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=repo_dir, timeout=5)
         # Commit with message
@@ -1003,12 +1089,19 @@ def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
             cwd=repo_dir,
             timeout=5
         )
-        # Push to remote
-        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=repo_dir, timeout=10)
+        # Push to remote (credentials already configured)
+        push_result = subprocess.run(
+            ["git", "push"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo_dir,
+            timeout=15
+        )
         print(f"[Git] ✓ {file_path} committed and pushed")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"[Git] ✗ Failed: {e}")
+        print(f"[Git] ✗ Failed: {e.stderr if hasattr(e, 'stderr') else e}")
         return False
     except subprocess.TimeoutExpired:
         print(f"[Git] ✗ Timeout - git operation too slow")
