@@ -656,6 +656,14 @@ async def api_generate(
 
         # save to photos/ folder (persistent)
         photo_path.write_bytes(await photo.read())
+
+        # Auto-commit and push new photo to GitHub
+        asyncio.create_task(asyncio.to_thread(
+            _git_commit_and_push,
+            str(photo_path),
+            f"ფოტო დაემატა (ქარდიდან): {photo_path.name}"
+        ))
+
         use_lib = False
     elif lib_photo:
         # use library photo (lib_photo is like /photos/person.jpg)
@@ -727,6 +735,14 @@ async def api_upload_library(photo: UploadFile = File(...)):
 
     try:
         photo_path.write_bytes(await photo.read())
+
+        # Auto-commit and push to GitHub
+        await asyncio.to_thread(
+            _git_commit_and_push,
+            str(photo_path),
+            f"ფოტო დაემატა: {photo_path.name}"
+        )
+
         return {"success": True, "name": photo_path.stem, "url": f"/photos/{photo_path.name}"}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
@@ -750,7 +766,16 @@ async def api_delete_library(photo_name: str = Form(...)):
         return JSONResponse(status_code=404, content={"error": "Photo not found"})
 
     try:
+        photo_name = photo_path.name
         photo_path.unlink()
+
+        # Auto-commit and push deletion to GitHub
+        await asyncio.to_thread(
+            _git_commit_and_push,
+            str(photo_path),
+            f"ფოტო წაიშალა: {photo_name}"
+        )
+
         return {"success": True}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
@@ -790,7 +815,23 @@ async def api_rename_library(old_name: str = Form(...), new_name: str = Form(...
         counter += 1
 
     try:
+        old_name = old_path.name
         old_path.rename(new_path)
+
+        # Auto-commit and push rename to GitHub (delete old, add new)
+        import subprocess
+        try:
+            subprocess.run(["git", "rm", str(old_path)], capture_output=True)
+            subprocess.run(["git", "add", str(new_path)], capture_output=True)
+        except:
+            pass  # if git operations fail, continue anyway
+
+        await asyncio.to_thread(
+            _git_commit_and_push,
+            str(new_path),
+            f"ფოტო გადარქმდა: {old_name} → {new_path.name}"
+        )
+
         return {"success": True, "name": new_path.stem, "url": f"/photos/{new_path.name}"}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
@@ -919,6 +960,31 @@ async def api_auto_generate(theme: str = Form(...)):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Git automation helper
+# ---------------------------------------------------------------------------
+def _git_commit_and_push(file_path: str, commit_message: str) -> bool:
+    """Auto-commit and push a file to GitHub. Returns True on success."""
+    import subprocess
+    try:
+        # Add the specific file
+        subprocess.run(["git", "add", file_path], check=True, capture_output=True)
+        # Commit with message
+        subprocess.run(
+            ["git", "commit", "-m", commit_message],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        # Push to remote
+        subprocess.run(["git", "push"], check=True, capture_output=True)
+        print(f"[Git] ✓ {file_path} committed and pushed")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[Git] ✗ Failed: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
