@@ -243,6 +243,59 @@ DASHBOARD = """<!DOCTYPE html>
                  background:#151620; border-radius:6px; }
   .or-divider  { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
 
+  /* flow button */
+  .flow-btn    { padding:6px 16px; background:#2d3148; color:#94a3b8; border:1px solid #3d4158;
+                 border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;
+                 transition:all .2s; margin-left:12px; vertical-align:middle; }
+  .flow-btn:hover { background:#3d4158; color:#fff; border-color:#1e94b9; }
+
+  /* flow overlay */
+  .flow-overlay { position:fixed; inset:0; background:rgba(10,12,20,0.95); z-index:100;
+                  display:none; overflow:auto; }
+  .flow-overlay.open { display:block; }
+  .flow-header { display:flex; justify-content:space-between; align-items:center;
+                 padding:20px 30px; border-bottom:1px solid #2d3148; }
+  .flow-header h2 { font-size:20px; color:#fff; }
+  .flow-close  { width:36px; height:36px; border-radius:8px; border:1px solid #3d4158;
+                 background:#1e2030; color:#94a3b8; font-size:18px; cursor:pointer;
+                 display:flex; align-items:center; justify-content:center; transition:all .2s; }
+  .flow-close:hover { background:#ef4444; color:#fff; border-color:#ef4444; }
+
+  /* flow canvas */
+  .flow-canvas { position:relative; min-height:700px; padding:40px; min-width:1100px; }
+
+  /* flow nodes */
+  .fnode        { position:absolute; width:160px; background:#1e2030; border:1px solid #2d3148;
+                  border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.3);
+                  transition:transform .15s, box-shadow .15s; }
+  .fnode:hover  { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  .fnode-head   { padding:8px 12px; font-size:11px; font-weight:700; text-transform:uppercase;
+                  letter-spacing:.5px; }
+  .fnode-body   { padding:10px 12px; }
+  .fnode-icon   { font-size:20px; margin-bottom:4px; }
+  .fnode-name   { font-size:12px; font-weight:600; color:#fff; }
+  .fnode-desc   { font-size:10px; color:#64748b; margin-top:2px; }
+
+  /* node colors */
+  .fnode-blue .fnode-head   { background:#1e3a5f; color:#60a5fa; }
+  .fnode-green .fnode-head  { background:#14532d; color:#4ade80; }
+  .fnode-orange .fnode-head { background:#431407; color:#fb923c; }
+  .fnode-purple .fnode-head { background:#3b0764; color:#c084fc; }
+  .fnode-red .fnode-head    { background:#450a0a; color:#f87171; }
+  .fnode-cyan .fnode-head   { background:#083344; color:#22d3ee; }
+
+  /* flow lines SVG */
+  .flow-svg     { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  .flow-line    { fill:none; stroke:#3d4158; stroke-width:2; }
+  .flow-line-active { stroke:#1e94b9; stroke-dasharray:6 4; animation:flowdash 1s linear infinite; }
+  @keyframes flowdash { to { stroke-dashoffset:-10; } }
+
+  /* flow legend */
+  .flow-legend  { display:flex; gap:16px; padding:16px 30px; border-top:1px solid #2d3148;
+                  flex-wrap:wrap; }
+  .flow-leg-item { display:flex; align-items:center; gap:6px; font-size:11px; color:#94a3b8; }
+  .flow-leg-dot { width:10px; height:10px; border-radius:3px; }
+
   /* history grid */
   .history h2  { font-size:16px; color:#fff; margin-bottom:14px; }
   .hgrid       { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
@@ -257,7 +310,7 @@ DASHBOARD = """<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <h1>News Card Bot</h1>
+  <h1>News Card Bot <button class="flow-btn" onclick="toggleFlow()">⚡ FLOW</button></h1>
   <p class="sub">BBC / CNN style news cards — Web &amp; Telegram</p>
 
   <div class="stats">
@@ -383,6 +436,126 @@ DASHBOARD = """<!DOCTYPE html>
   <div class="history">
     <h2>Recent Cards</h2>
     <div class="hgrid" id="hgrid"></div>
+  </div>
+</div>
+
+<!-- FLOW OVERLAY -->
+<div class="flow-overlay" id="flow-overlay">
+  <div class="flow-header">
+    <h2>⚡ Agent Architecture Flow</h2>
+    <button class="flow-close" onclick="toggleFlow()">✕</button>
+  </div>
+  <div style="overflow:auto;flex:1;">
+    <div class="flow-canvas" id="flow-canvas">
+      <svg class="flow-svg" id="flow-svg"></svg>
+
+      <!-- ROW 1: Manual Card -->
+      <div class="fnode fnode-blue" style="left:40px;top:30px" id="fn-dash1">
+        <div class="fnode-head">INPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">🖥️</div><div class="fnode-name">Dashboard</div><div class="fnode-desc">ვებ ინტერფეისი</div></div>
+      </div>
+      <div class="fnode fnode-blue" style="left:240px;top:30px" id="fn-photo">
+        <div class="fnode-head">DATA</div>
+        <div class="fnode-body"><div class="fnode-icon">📷</div><div class="fnode-name">Photo + Text</div><div class="fnode-desc">ფოტო, სახელი, ტექსტი</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:440px;top:30px" id="fn-cardgen">
+        <div class="fnode-head">PROCESS</div>
+        <div class="fnode-body"><div class="fnode-icon">🃏</div><div class="fnode-name">Card Generator</div><div class="fnode-desc">Playwright render</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:640px;top:30px" id="fn-card1">
+        <div class="fnode-head">OUTPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">🖼️</div><div class="fnode-name">Card Image</div><div class="fnode-desc">JPG 1080×1350</div></div>
+      </div>
+      <div class="fnode fnode-red" style="left:840px;top:30px" id="fn-fb1">
+        <div class="fnode-head">PUBLISH</div>
+        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Facebook</div><div class="fnode-desc">ავტო-ატვირთვა</div></div>
+      </div>
+
+      <!-- ROW 2: Auto Card -->
+      <div class="fnode fnode-blue" style="left:40px;top:170px" id="fn-dash2">
+        <div class="fnode-head">INPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">🖥️</div><div class="fnode-name">Theme Input</div><div class="fnode-desc">თემა / საძიებო</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:240px;top:170px" id="fn-tavily">
+        <div class="fnode-head">SEARCH</div>
+        <div class="fnode-body"><div class="fnode-icon">🔍</div><div class="fnode-name">Tavily Search</div><div class="fnode-desc">ნიუსების ძიება</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:440px;top:170px" id="fn-gemini">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🤖</div><div class="fnode-name">Gemini Flash</div><div class="fnode-desc">სტატია + სათაური</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:640px;top:170px" id="fn-imagen">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🎨</div><div class="fnode-name">Imagen 3</div><div class="fnode-desc">ფოტო გენერაცია</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:840px;top:170px" id="fn-card2">
+        <div class="fnode-head">OUTPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">📰</div><div class="fnode-name">Auto Card</div><div class="fnode-desc">ქარდი + სტატია</div></div>
+      </div>
+
+      <!-- ROW 3: Voice TTS -->
+      <div class="fnode fnode-blue" style="left:40px;top:310px" id="fn-dash3">
+        <div class="fnode-head">INPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">📝</div><div class="fnode-name">Text Input</div><div class="fnode-desc">ქართული ტექსტი</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:300px;top:310px" id="fn-tts">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">Gemini TTS</div><div class="fnode-desc">Charon voice</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:560px;top:310px" id="fn-wav">
+        <div class="fnode-head">OUTPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">🔊</div><div class="fnode-name">WAV Audio</div><div class="fnode-desc">24kHz mono</div></div>
+      </div>
+
+      <!-- ROW 4: Telegram -->
+      <div class="fnode fnode-purple" style="left:40px;top:450px" id="fn-tg">
+        <div class="fnode-head">TELEGRAM</div>
+        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Telegram Bot</div><div class="fnode-desc">/start, /voice</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:260px;top:450px" id="fn-tgstart">
+        <div class="fnode-head">COMMAND</div>
+        <div class="fnode-body"><div class="fnode-icon">📸</div><div class="fnode-name">/start</div><div class="fnode-desc">ფოტო → ქარდი</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:480px;top:450px" id="fn-tgvoice">
+        <div class="fnode-head">COMMAND</div>
+        <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">/voice</div><div class="fnode-desc">ტექსტი → აუდიო</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:700px;top:450px" id="fn-tgout">
+        <div class="fnode-head">OUTPUT</div>
+        <div class="fnode-body"><div class="fnode-icon">📤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">ქარდი / ხმა</div></div>
+      </div>
+
+      <!-- ROW 5: Scheduler + GitHub -->
+      <div class="fnode fnode-cyan" style="left:40px;top:590px" id="fn-timer">
+        <div class="fnode-head">SCHEDULER</div>
+        <div class="fnode-body"><div class="fnode-icon">⏰</div><div class="fnode-name">Hourly Timer</div><div class="fnode-desc">ყოველ საათში</div></div>
+      </div>
+      <div class="fnode fnode-cyan" style="left:260px;top:590px" id="fn-report">
+        <div class="fnode-head">ACTION</div>
+        <div class="fnode-body"><div class="fnode-icon">📊</div><div class="fnode-name">Status Report</div><div class="fnode-desc">სტატუსი + uptime</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:480px;top:590px" id="fn-tgadmin">
+        <div class="fnode-head">TELEGRAM</div>
+        <div class="fnode-body"><div class="fnode-icon">👤</div><div class="fnode-name">Admin Chat</div><div class="fnode-desc">შეტყობინება</div></div>
+      </div>
+
+      <div class="fnode fnode-cyan" style="left:700px;top:590px" id="fn-github">
+        <div class="fnode-head">STORAGE</div>
+        <div class="fnode-body"><div class="fnode-icon">🐙</div><div class="fnode-name">GitHub</div><div class="fnode-desc">photos/ sync</div></div>
+      </div>
+      <div class="fnode fnode-blue" style="left:920px;top:590px" id="fn-photos">
+        <div class="fnode-head">LIBRARY</div>
+        <div class="fnode-body"><div class="fnode-icon">📁</div><div class="fnode-name">Photo Library</div><div class="fnode-desc">ატვირთვა/წაშლა</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="flow-legend">
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#60a5fa"></div> Input / Dashboard</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#4ade80"></div> AI / Process</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#fb923c"></div> Output</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#c084fc"></div> Telegram</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#22d3ee"></div> System / Storage</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#f87171"></div> Publish</div>
   </div>
 </div>
 
@@ -816,6 +989,72 @@ DASHBOARD = """<!DOCTYPE html>
       spin.style.display = 'none';
     }
   };
+  // ── flow visualization ──────────────────────────────────────────
+  window.toggleFlow = function() {
+    const overlay = document.getElementById('flow-overlay');
+    overlay.classList.toggle('open');
+    if (overlay.classList.contains('open')) drawFlowLines();
+  };
+
+  function drawFlowLines() {
+    const svg = document.getElementById('flow-svg');
+    const canvas = document.getElementById('flow-canvas');
+    svg.setAttribute('width', canvas.scrollWidth);
+    svg.setAttribute('height', canvas.scrollHeight);
+    svg.innerHTML = '';
+
+    const connections = [
+      // Row 1: Manual card
+      ['fn-dash1','fn-photo','active'],
+      ['fn-photo','fn-cardgen','active'],
+      ['fn-cardgen','fn-card1','active'],
+      ['fn-card1','fn-fb1',''],
+      // Row 2: Auto card
+      ['fn-dash2','fn-tavily','active'],
+      ['fn-tavily','fn-gemini','active'],
+      ['fn-gemini','fn-imagen','active'],
+      ['fn-imagen','fn-card2','active'],
+      // Row 3: TTS
+      ['fn-dash3','fn-tts','active'],
+      ['fn-tts','fn-wav','active'],
+      // Row 4: Telegram
+      ['fn-tg','fn-tgstart','active'],
+      ['fn-tg','fn-tgvoice','active'],
+      ['fn-tgstart','fn-tgout',''],
+      ['fn-tgvoice','fn-tgout',''],
+      // Row 5: Scheduler
+      ['fn-timer','fn-report','active'],
+      ['fn-report','fn-tgadmin','active'],
+      // GitHub sync
+      ['fn-github','fn-photos','active'],
+    ];
+
+    connections.forEach(([fromId, toId, type]) => {
+      const fromEl = document.getElementById(fromId);
+      const toEl = document.getElementById(toId);
+      if (!fromEl || !toEl) return;
+
+      const fx = fromEl.offsetLeft + fromEl.offsetWidth;
+      const fy = fromEl.offsetTop + fromEl.offsetHeight / 2;
+      const tx = toEl.offsetLeft;
+      const ty = toEl.offsetTop + toEl.offsetHeight / 2;
+
+      const mx = (fx + tx) / 2;
+      const d = 'M'+fx+','+fy+' C'+mx+','+fy+' '+mx+','+ty+' '+tx+','+ty;
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', type === 'active' ? 'flow-line flow-line-active' : 'flow-line');
+      svg.appendChild(path);
+
+      // Arrow
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      const ax = tx - 6;
+      arrow.setAttribute('points', tx+','+ty+' '+ax+','+(ty-4)+' '+ax+','+(ty+4));
+      arrow.setAttribute('fill', type === 'active' ? '#1e94b9' : '#3d4158');
+      svg.appendChild(arrow);
+    });
+  }
 })();
 </script>
 </body>
