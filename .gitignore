@@ -7,3 +7,10 @@ temp/
 uploads/
 cards/
 fonts/
+
+# macOS
+.DS_Store
+
+# IDE / editor
+.claude/
+*.code-workspace
