@@ -147,7 +147,10 @@ DASHBOARD = """<!DOCTYPE html>
                  font-size:14px; display:none; z-index:99; }
 
   /* photo library */
-  .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; }
+  .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; display:flex; align-items:center; justify-content:space-between; }
+  .lib-upload-btn { padding:5px 12px; background:#2d3148; color:#94a3b8; border:1px solid #3d4158;
+                 border-radius:5px; font-size:11px; cursor:pointer; transition:all .2s; }
+  .lib-upload-btn:hover { background:#3d4158; color:#e2e8f0; border-color:#4d5168; }
   .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
   .lib-item    { text-align:center; cursor:pointer; }
   .lib-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
@@ -192,7 +195,11 @@ DASHBOARD = """<!DOCTYPE html>
   <div class="panel">
     <h2>1 — ქარდის შექმნა</h2>
 
-    <div class="lib-label">📁 ფოტო ბიბლიოთეკა</div>
+    <div class="lib-label">
+      <span>📁 ფოტო ბიბლიოთეკა</span>
+      <button class="lib-upload-btn" onclick="document.getElementById('lib-fi').click()">📤 ფოტო ატვირთე</button>
+      <input type="file" id="lib-fi" accept="image/*" style="display:none">
+    </div>
     <div class="lib-grid" id="lib-grid">
       <div class="lib-empty">ფოტოები არ არის</div>
     </div>
@@ -279,7 +286,7 @@ DASHBOARD = """<!DOCTYPE html>
       const photos = await res.json();
       const grid = document.getElementById('lib-grid');
       if (photos.length === 0) {
-        grid.innerHTML = '<div class="lib-empty">ფოტოები არ არის<br><small>photos/ ფოლდერში ჩაამატე</small></div>';
+        grid.innerHTML = '<div class="lib-empty">ფოტოები არ არის</div>';
         return;
       }
       grid.innerHTML = '';
@@ -294,6 +301,29 @@ DASHBOARD = """<!DOCTYPE html>
       console.error('Library load failed:', e);
     }
   }
+
+  // upload photo to library
+  document.getElementById('lib-fi').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fd = new FormData();
+    fd.append('photo', file);
+
+    try {
+      const r = await fetch('/api/upload-library', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (data.success) {
+        toast('ფოტო ატვირთულია ბიბლიოთეკაში!');
+        loadLibrary();  // reload library
+        e.target.value = '';  // clear input
+      } else {
+        toast('შეცდომა: ' + (data.error || 'unknown'));
+      }
+    } catch(err) {
+      toast('ნეტვორკის შეცდომა: ' + err.message);
+    }
+  });
 
   function selectLibPhoto(url, name, itemEl) {
     // clear previous selection
@@ -326,7 +356,7 @@ DASHBOARD = """<!DOCTYPE html>
     file = f;
     // clear library selection
     libPhoto = null;
-    document.querySelectorAll('.lib-photo').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.lib-item').forEach(el => el.classList.remove('selected'));
     const r = new FileReader();
     r.onload = () => { prev.src = r.result; prev.style.display = 'block'; };
     r.readAsDataURL(f);
@@ -588,6 +618,33 @@ async def api_library():
     # sort by name
     photos.sort(key=lambda x: x["name"].lower())
     return photos
+
+
+@app.post("/api/upload-library")
+async def api_upload_library(photo: UploadFile = File(...)):
+    """Upload a photo to the library folder."""
+    if not photo.filename:
+        return JSONResponse(status_code=400, content={"error": "No file provided"})
+
+    # sanitize filename
+    import re
+    safe_name = re.sub(r'[^\w\s.-]', '', photo.filename)
+    safe_name = safe_name.replace(' ', '_')
+
+    # ensure unique filename
+    photo_path = PHOTOS / safe_name
+    counter = 1
+    stem = Path(safe_name).stem
+    ext = Path(safe_name).suffix
+    while photo_path.exists():
+        photo_path = PHOTOS / f"{stem}_{counter}{ext}"
+        counter += 1
+
+    try:
+        photo_path.write_bytes(await photo.read())
+        return {"success": True, "name": photo_path.stem, "url": f"/photos/{photo_path.name}"}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.get("/api/status")
