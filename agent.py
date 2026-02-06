@@ -53,7 +53,7 @@ KIMI_MODEL     = "kimi-k2-0905-preview"
 KIMI_MAX_TOK   = 8_000
 
 # Gemini
-GEMINI_MODEL   = "gemini-2.0-flash"
+GEMINI_MODEL   = "gemini-3.0-pro"
 
 MAX_TOOL_ROUNDS = 10   # safety cap — stops infinite tool loops
 

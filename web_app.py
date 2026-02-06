@@ -314,8 +314,8 @@ DASHBOARD = """<!DOCTYPE html>
 
   <!-- auto-generate panel -->
   <div class="panel">
-    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini Thinking]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 2.0 Flash (Thinking) → Card → Facebook</p>
+    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini 3.0 Pro]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 3.0 Pro (Latest) → Card → Facebook</p>
     <div class="row">
       <div class="g"><label>თემა</label>
         <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
@@ -1404,7 +1404,7 @@ def _pick_gemini(tavily_res: dict) -> dict:
 
     try:
         resp = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3.0-pro",
             contents=prompt,
         )
         raw  = resp.text
