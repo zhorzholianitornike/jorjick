@@ -159,8 +159,7 @@ DASHBOARD = """<!DOCTYPE html>
   .lib-item.selected img { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
   .lib-item .lib-name { font-size:10px; color:#94a3b8; margin-top:4px; overflow:hidden;
                  text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
-  .lib-actions { position:absolute; top:4px; right:4px; display:none; gap:4px; z-index:10; }
-  .lib-item:hover .lib-actions { display:flex; }
+  .lib-actions { position:absolute; top:4px; right:4px; display:flex; gap:4px; z-index:10; }
   .lib-action-btn { width:24px; height:24px; border-radius:4px; border:none; cursor:pointer;
                  font-size:12px; display:flex; align-items:center; justify-content:center;
                  transition:all .2s; box-shadow:0 2px 4px rgba(0,0,0,0.3); }
