@@ -469,9 +469,10 @@ def generate_auto_card(
     bar_height = 20
     max_text_width = W - pad_left - pad_right
 
-    # Wrap text
+    # Wrap text (UPPERCASE)
     name_upper = name.upper()
-    text_lines = wrap_text(text, text_font, max_text_width)
+    text_upper = text.upper()
+    text_lines = wrap_text(text_upper, text_font, max_text_width)
 
     # Calculate positions from bottom
     text_height = len(text_lines) * 42  # line height

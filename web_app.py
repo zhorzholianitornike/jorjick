@@ -476,18 +476,30 @@ async def api_auto_generate(theme: str = Form(...)):
             image_url = card_info.get("image_url")
             yield _e({"t": "log", "m": f"AI: {name}"})
 
-            # 3. Download image from Tavily results
+            # 3. Generate photo with Gemini Imagen
             photo_path = None
-            if image_url:
-                yield _e({"t": "log", "m": "Downloading image..."})
-                photo_path = await asyncio.to_thread(
-                    download_image, image_url, f"temp/auto_{card_id}.jpg"
-                )
-                if photo_path:
-                    yield _e({"t": "log", "m": "Image downloaded OK"})
+            img_prompt = (
+                f"Professional news photograph about: {name}. "
+                f"Context: {text}. "
+                "Realistic photojournalism style, high quality, no text or watermarks."
+            )
+            yield _e({"t": "log", "m": "Gemini Imagen generating photo..."})
+            photo_path = await asyncio.to_thread(
+                _generate_image_gemini, img_prompt, f"temp/auto_{card_id}.jpg"
+            )
+
+            if photo_path:
+                yield _e({"t": "log", "m": "Photo generated OK"})
+            else:
+                # Fallback: download from Tavily
+                yield _e({"t": "log", "m": "Gemini failed, downloading from web..."})
+                if image_url:
+                    photo_path = await asyncio.to_thread(
+                        download_image, image_url, f"temp/auto_{card_id}.jpg"
+                    )
 
             if not photo_path:
-                yield _e({"t": "log", "m": "No image found, using placeholder..."})
+                yield _e({"t": "log", "m": "Using placeholder..."})
                 photo_path = await asyncio.to_thread(create_placeholder)
 
             # 4. Generate card with Pillow (simple design, Georgian text)
