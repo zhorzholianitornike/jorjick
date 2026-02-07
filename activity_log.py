@@ -28,7 +28,8 @@ LOG_FILE = DATA_DIR / "activity_log.json"
 
 # Column headers for Google Sheet
 HEADERS = ["id", "timestamp", "published_at", "source", "title",
-           "status", "facebook_post_id", "card_image_url", "caption"]
+           "status", "facebook_post_id", "card_image_url", "caption",
+           "likes", "comments", "shares", "reach"]
 
 _lock = threading.Lock()
 _logs: list[dict] = []
@@ -114,7 +115,7 @@ def format_sheet():
         requests_body = []
 
         # Column widths
-        col_widths = [120, 180, 180, 130, 300, 100, 150, 250, 300]
+        col_widths = [120, 180, 180, 130, 300, 100, 150, 250, 300, 80, 80, 80, 80]
         for i, w in enumerate(col_widths):
             requests_body.append({
                 "updateDimensionProperties": {
@@ -300,6 +301,10 @@ def log_activity(
         "facebook_post_id": facebook_post_id or "",
         "card_image_url": card_image_url or "",
         "caption": caption or "",
+        "likes": 0,
+        "comments": 0,
+        "shares": 0,
+        "reach": 0,
     }
 
     with _lock:
