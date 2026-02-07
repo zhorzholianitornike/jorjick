@@ -266,7 +266,7 @@ DASHBOARD = """<!DOCTYPE html>
   .flow-close:hover { background:#ef4444; color:#fff; border-color:#ef4444; }
 
   /* flow canvas */
-  .flow-canvas { position:relative; min-height:700px; padding:40px; min-width:1100px; }
+  .flow-canvas { position:relative; min-height:1200px; padding:40px; min-width:1200px; }
 
   /* flow nodes */
   .fnode        { position:absolute; width:160px; background:#1e2030; border:1px solid #2d3148;
@@ -571,89 +571,154 @@ DASHBOARD = """<!DOCTYPE html>
       </div>
 
       <!-- ROW 2: Auto Card -->
-      <div class="fnode fnode-blue" style="left:40px;top:170px" id="fn-dash2">
+      <div class="fnode fnode-blue" style="left:40px;top:150px" id="fn-dash2">
         <div class="fnode-head">INPUT</div>
         <div class="fnode-body"><div class="fnode-icon">🖥️</div><div class="fnode-name">Theme Input</div><div class="fnode-desc">თემა / საძიებო</div></div>
       </div>
-      <div class="fnode fnode-green" style="left:240px;top:170px" id="fn-tavily">
+      <div class="fnode fnode-green" style="left:240px;top:150px" id="fn-tavily">
         <div class="fnode-head">SEARCH</div>
         <div class="fnode-body"><div class="fnode-icon">🔍</div><div class="fnode-name">Tavily Search</div><div class="fnode-desc">ნიუსების ძიება</div></div>
       </div>
-      <div class="fnode fnode-green" style="left:440px;top:170px" id="fn-gemini">
+      <div class="fnode fnode-green" style="left:440px;top:150px" id="fn-gemini">
         <div class="fnode-head">AI</div>
         <div class="fnode-body"><div class="fnode-icon">🤖</div><div class="fnode-name">Gemini Flash</div><div class="fnode-desc">სტატია + სათაური</div></div>
       </div>
-      <div class="fnode fnode-green" style="left:640px;top:170px" id="fn-imagen">
+      <div class="fnode fnode-green" style="left:640px;top:150px" id="fn-imagen">
         <div class="fnode-head">AI</div>
         <div class="fnode-body"><div class="fnode-icon">🎨</div><div class="fnode-name">Imagen 3</div><div class="fnode-desc">ფოტო გენერაცია</div></div>
       </div>
-      <div class="fnode fnode-orange" style="left:840px;top:170px" id="fn-card2">
+      <div class="fnode fnode-orange" style="left:840px;top:150px" id="fn-card2">
         <div class="fnode-head">OUTPUT</div>
         <div class="fnode-body"><div class="fnode-icon">📰</div><div class="fnode-name">Auto Card</div><div class="fnode-desc">ქარდი + სტატია</div></div>
       </div>
 
       <!-- ROW 3: Voice TTS -->
-      <div class="fnode fnode-blue" style="left:40px;top:310px" id="fn-dash3">
+      <div class="fnode fnode-blue" style="left:40px;top:270px" id="fn-dash3">
         <div class="fnode-head">INPUT</div>
         <div class="fnode-body"><div class="fnode-icon">📝</div><div class="fnode-name">Text Input</div><div class="fnode-desc">ქართული ტექსტი</div></div>
       </div>
-      <div class="fnode fnode-green" style="left:300px;top:310px" id="fn-tts">
+      <div class="fnode fnode-green" style="left:300px;top:270px" id="fn-tts">
         <div class="fnode-head">AI</div>
         <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">Gemini TTS</div><div class="fnode-desc">Charon voice</div></div>
       </div>
-      <div class="fnode fnode-orange" style="left:560px;top:310px" id="fn-wav">
+      <div class="fnode fnode-orange" style="left:560px;top:270px" id="fn-wav">
         <div class="fnode-head">OUTPUT</div>
         <div class="fnode-body"><div class="fnode-icon">🔊</div><div class="fnode-name">WAV Audio</div><div class="fnode-desc">24kHz mono</div></div>
       </div>
 
-      <!-- ROW 4: Telegram -->
-      <div class="fnode fnode-purple" style="left:40px;top:450px" id="fn-tg">
-        <div class="fnode-head">TELEGRAM</div>
-        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Telegram Bot</div><div class="fnode-desc">/start, /voice</div></div>
+      <!-- ROW 4: IPN Auto-News -->
+      <div class="fnode fnode-cyan" style="left:40px;top:390px" id="fn-ipn">
+        <div class="fnode-head">SCRAPER</div>
+        <div class="fnode-body"><div class="fnode-icon">🇬🇪</div><div class="fnode-name">interpressnews</div><div class="fnode-desc">პოლიტიკა კატეგორია</div></div>
       </div>
-      <div class="fnode fnode-purple" style="left:260px;top:450px" id="fn-tgstart">
+      <div class="fnode fnode-green" style="left:240px;top:390px" id="fn-ipn-scrape">
+        <div class="fnode-head">PROCESS</div>
+        <div class="fnode-body"><div class="fnode-icon">🕷️</div><div class="fnode-name">BS4 Scraper</div><div class="fnode-desc">schema.org/Article</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:440px;top:390px" id="fn-ipn-tg">
+        <div class="fnode-head">APPROVAL</div>
+        <div class="fnode-body"><div class="fnode-icon">✅</div><div class="fnode-name">TG Approval</div><div class="fnode-desc">დადასტურება / უარყოფა</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:640px;top:390px" id="fn-ipn-caption">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🤖</div><div class="fnode-name">Gemini Caption</div><div class="fnode-desc">FB კაფშენი + ჰეშთეგი</div></div>
+      </div>
+      <div class="fnode fnode-red" style="left:840px;top:390px" id="fn-ipn-fb">
+        <div class="fnode-head">PUBLISH</div>
+        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Card + Facebook</div><div class="fnode-desc">ქარდი → FB გვერდი</div></div>
+      </div>
+
+      <!-- ROW 5: RSS International News -->
+      <div class="fnode fnode-cyan" style="left:40px;top:510px" id="fn-rss">
+        <div class="fnode-head">SOURCE</div>
+        <div class="fnode-body"><div class="fnode-icon">📡</div><div class="fnode-name">RSS Feeds</div><div class="fnode-desc">CNN / BBC</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:210px;top:510px" id="fn-rss-parse">
+        <div class="fnode-head">PROCESS</div>
+        <div class="fnode-body"><div class="fnode-icon">📋</div><div class="fnode-name">feedparser</div><div class="fnode-desc">RSS → სტატიები</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:380px;top:510px" id="fn-rss-translate">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🌐</div><div class="fnode-name">Gemini Translate</div><div class="fnode-desc">EN → KA თარგმანი</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:550px;top:510px" id="fn-rss-queue">
+        <div class="fnode-head">QUEUE</div>
+        <div class="fnode-body"><div class="fnode-icon">📦</div><div class="fnode-name">Queue System</div><div class="fnode-desc">რიგი + ინტერვალი</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:720px;top:510px" id="fn-rss-tg">
+        <div class="fnode-head">APPROVAL</div>
+        <div class="fnode-body"><div class="fnode-icon">✅</div><div class="fnode-name">TG Approval</div><div class="fnode-desc">დადასტურება / უარყოფა</div></div>
+      </div>
+      <div class="fnode fnode-red" style="left:890px;top:510px" id="fn-rss-fb">
+        <div class="fnode-head">PUBLISH</div>
+        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Card + Facebook</div><div class="fnode-desc">ქარდი → FB გვერდი</div></div>
+      </div>
+
+      <!-- ROW 6: Telegram Bot -->
+      <div class="fnode fnode-purple" style="left:40px;top:640px" id="fn-tg">
+        <div class="fnode-head">TELEGRAM</div>
+        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Telegram Bot</div><div class="fnode-desc">/start, /voice, free text</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:240px;top:630px" id="fn-tgstart">
         <div class="fnode-head">COMMAND</div>
         <div class="fnode-body"><div class="fnode-icon">📸</div><div class="fnode-name">/start</div><div class="fnode-desc">ფოტო → ქარდი</div></div>
       </div>
-      <div class="fnode fnode-purple" style="left:480px;top:450px" id="fn-tgvoice">
+      <div class="fnode fnode-purple" style="left:440px;top:630px" id="fn-tgvoice">
         <div class="fnode-head">COMMAND</div>
         <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">/voice</div><div class="fnode-desc">ტექსტი → აუდიო</div></div>
       </div>
-      <div class="fnode fnode-orange" style="left:700px;top:450px" id="fn-tgout">
+      <div class="fnode fnode-purple" style="left:640px;top:630px" id="fn-tgfree">
+        <div class="fnode-head">QUERY</div>
+        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Free Text</div><div class="fnode-desc">თანამშრომლის ძიება</div></div>
+      </div>
+      <div class="fnode fnode-orange" style="left:840px;top:640px" id="fn-tgout">
         <div class="fnode-head">OUTPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">📤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">ქარდი / ხმა</div></div>
+        <div class="fnode-body"><div class="fnode-icon">📤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">ქარდი / ხმა / ინფო</div></div>
       </div>
 
-      <!-- ROW 5: Scheduler + GitHub -->
-      <div class="fnode fnode-cyan" style="left:40px;top:590px" id="fn-timer">
+      <!-- ROW 7: Employee Lookup -->
+      <div class="fnode fnode-blue" style="left:40px;top:770px" id="fn-gsheet">
+        <div class="fnode-head">DATA</div>
+        <div class="fnode-body"><div class="fnode-icon">📊</div><div class="fnode-name">Google Sheet</div><div class="fnode-desc">თანამშრომლების DB</div></div>
+      </div>
+      <div class="fnode fnode-green" style="left:300px;top:770px" id="fn-openai">
+        <div class="fnode-head">AI</div>
+        <div class="fnode-body"><div class="fnode-icon">🧠</div><div class="fnode-name">OpenAI gpt-4o-mini</div><div class="fnode-desc">ბუნებრივი ენის ძიება</div></div>
+      </div>
+      <div class="fnode fnode-purple" style="left:560px;top:770px" id="fn-emp-tg">
+        <div class="fnode-head">TELEGRAM</div>
+        <div class="fnode-body"><div class="fnode-icon">👤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">თანამშრომლის ინფო</div></div>
+      </div>
+
+      <!-- ROW 8: System / Scheduler + GitHub -->
+      <div class="fnode fnode-cyan" style="left:40px;top:900px" id="fn-timer">
         <div class="fnode-head">SCHEDULER</div>
         <div class="fnode-body"><div class="fnode-icon">⏰</div><div class="fnode-name">Hourly Timer</div><div class="fnode-desc">ყოველ საათში</div></div>
       </div>
-      <div class="fnode fnode-cyan" style="left:260px;top:590px" id="fn-report">
+      <div class="fnode fnode-cyan" style="left:260px;top:900px" id="fn-report">
         <div class="fnode-head">ACTION</div>
         <div class="fnode-body"><div class="fnode-icon">📊</div><div class="fnode-name">Status Report</div><div class="fnode-desc">სტატუსი + uptime</div></div>
       </div>
-      <div class="fnode fnode-purple" style="left:480px;top:590px" id="fn-tgadmin">
+      <div class="fnode fnode-purple" style="left:480px;top:900px" id="fn-tgadmin">
         <div class="fnode-head">TELEGRAM</div>
         <div class="fnode-body"><div class="fnode-icon">👤</div><div class="fnode-name">Admin Chat</div><div class="fnode-desc">შეტყობინება</div></div>
       </div>
-
-      <div class="fnode fnode-cyan" style="left:700px;top:590px" id="fn-github">
+      <div class="fnode fnode-cyan" style="left:700px;top:900px" id="fn-github">
         <div class="fnode-head">STORAGE</div>
         <div class="fnode-body"><div class="fnode-icon">🐙</div><div class="fnode-name">GitHub</div><div class="fnode-desc">photos/ sync</div></div>
       </div>
-      <div class="fnode fnode-blue" style="left:920px;top:590px" id="fn-photos">
+      <div class="fnode fnode-blue" style="left:920px;top:900px" id="fn-photos">
         <div class="fnode-head">LIBRARY</div>
         <div class="fnode-body"><div class="fnode-icon">📁</div><div class="fnode-name">Photo Library</div><div class="fnode-desc">ატვირთვა/წაშლა</div></div>
       </div>
     </div>
   </div>
   <div class="flow-legend">
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#60a5fa"></div> Input / Dashboard</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#60a5fa"></div> Input / Data</div>
     <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#4ade80"></div> AI / Process</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#fb923c"></div> Output</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#fb923c"></div> Output / Queue</div>
     <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#c084fc"></div> Telegram</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#22d3ee"></div> System / Storage</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#22d3ee"></div> Source / System</div>
     <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#f87171"></div> Publish</div>
   </div>
 </div>
@@ -1300,15 +1365,30 @@ DASHBOARD = """<!DOCTYPE html>
       // Row 3: TTS
       ['fn-dash3','fn-tts','active'],
       ['fn-tts','fn-wav','active'],
-      // Row 4: Telegram
+      // Row 4: IPN Auto-News
+      ['fn-ipn','fn-ipn-scrape','active'],
+      ['fn-ipn-scrape','fn-ipn-tg','active'],
+      ['fn-ipn-tg','fn-ipn-caption','active'],
+      ['fn-ipn-caption','fn-ipn-fb','active'],
+      // Row 5: RSS International News
+      ['fn-rss','fn-rss-parse','active'],
+      ['fn-rss-parse','fn-rss-translate','active'],
+      ['fn-rss-translate','fn-rss-queue','active'],
+      ['fn-rss-queue','fn-rss-tg','active'],
+      ['fn-rss-tg','fn-rss-fb','active'],
+      // Row 6: Telegram
       ['fn-tg','fn-tgstart','active'],
       ['fn-tg','fn-tgvoice','active'],
+      ['fn-tg','fn-tgfree','active'],
       ['fn-tgstart','fn-tgout',''],
       ['fn-tgvoice','fn-tgout',''],
-      // Row 5: Scheduler
+      ['fn-tgfree','fn-tgout',''],
+      // Row 7: Employee Lookup
+      ['fn-gsheet','fn-openai','active'],
+      ['fn-openai','fn-emp-tg','active'],
+      // Row 8: Scheduler + GitHub
       ['fn-timer','fn-report','active'],
       ['fn-report','fn-tgadmin','active'],
-      // GitHub sync
       ['fn-github','fn-photos','active'],
     ];
 
