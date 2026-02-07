@@ -2150,6 +2150,67 @@ async def api_analytics_sheets_test():
         return {"ok": False, **info}
 
 
+@app.get("/api/test-hourly-report")
+async def api_test_hourly_report():
+    """Send a test hourly report to Telegram."""
+    try:
+        now = datetime.now(TBILISI)
+        uptime = now - _start_time
+        hours = int(uptime.total_seconds() // 3600)
+        minutes = int((uptime.total_seconds() % 3600) // 60)
+
+        try:
+            detail = await asyncio.to_thread(get_today_detail)
+        except Exception:
+            detail = {"total_today": 0, "by_source": {}, "approved": 0, "rejected": 0, "published": 0}
+
+        src_lines = ""
+        for src, count in detail["by_source"].items():
+            src_lines += f"  · {src}: {count}\n"
+        if not src_lines:
+            src_lines = "  · —\n"
+
+        report = (
+            f"📊 საათობრივი რეპორტი — {now.strftime('%H:%M  %d/%m/%Y')}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"✅ სტატუსი: აქტიური\n"
+            f"⏱ აქტიურია: {hours}სთ {minutes}წთ\n"
+            f"🃏 შექმნილი ქარდები: {len(history)}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📰 დღევანდელი აქტივობა: {detail['total_today']}\n"
+            f"{src_lines}"
+            f"✅ დამტკიცებული: {detail['approved']}\n"
+            f"❌ უარყოფილი: {detail['rejected']}\n"
+            f"📘 გამოქვეყნებული: {detail['published']}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+        )
+
+        fb_section = ""
+        try:
+            fb_stats = _fb_page_cache if _fb_page_cache else await asyncio.to_thread(get_page_stats)
+            if fb_stats.get("followers"):
+                fb_section = f"📘 Facebook გვერდი:\n"
+                fb_section += f"  👥 მიმდევრები: {fb_stats.get('followers', 0):,}\n"
+                top_posts = get_top(1)
+                if top_posts:
+                    tp = top_posts[0]
+                    likes = int(tp.get('likes', 0) or 0)
+                    cmts = int(tp.get('comments', 0) or 0)
+                    title = (tp.get('title', '') or '')[:30]
+                    fb_section += f"  🏆 ტოპ პოსტი: \"{title}\" (👍{likes} 💬{cmts})\n"
+                fb_section += f"━━━━━━━━━━━━━━━━━━━━━\n"
+        except Exception:
+            pass
+
+        report += fb_section
+        report += f"🤖 აგენტი აქტიურია და მზადყოფნაშია!"
+
+        await asyncio.to_thread(_send_telegram, report)
+        return {"ok": True, "message": "Report sent to Telegram"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 _fb_page_cache = {}  # cached page stats
 
 
