@@ -2210,7 +2210,7 @@ def _generate_fb_caption(title: str, article_text: str, url: str) -> str:
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return f"📰 {title}\n\n{article_text[:300]}\n\n🔗 {url}"
+        return f"📰 {title}\n\n{article_text[:300]}"
 
     try:
         client = genai.Client(api_key=api_key)
@@ -2223,7 +2223,8 @@ def _generate_fb_caption(title: str, article_text: str, url: str) -> str:
             "- შემდეგ 3-5 წინადადებით აღწერე სიახლე დეტალურად\n"
             "- ბოლოს დაამატე 5-8 რელევანტური ჰეშთეგი ქართულად და ინგლისურად\n"
             "- არ გამოიყენო emoji ტექსტში, მხოლოდ ჰეშთეგებამდე ერთი 📰\n"
-            "- არ მოიგონო ფაქტები, მხოლოდ ტექსტში არსებული ინფორმაცია გამოიყენე\n\n"
+            "- არ მოიგონო ფაქტები, მხოლოდ ტექსტში არსებული ინფორმაცია გამოიყენე\n"
+            "- არ ჩასვა წყაროს ბმული ან URL — მხოლოდ ტექსტი და ჰეშთეგები\n\n"
             f"სათაური: {title}\n\n"
             f"სტატიის ტექსტი:\n{article_text[:1500]}\n\n"
             "დაწერე მხოლოდ Facebook პოსტის ტექსტი, სხვა არაფერი:"
@@ -2234,14 +2235,11 @@ def _generate_fb_caption(title: str, article_text: str, url: str) -> str:
             contents=prompt,
         )
         caption = resp.text.strip()
-
-        # Append source link
-        caption += f"\n\n🔗 წყარო: {url}"
         return caption
 
     except Exception as exc:
         print(f"[Caption] Gemini failed: {exc}")
-        return f"📰 {title}\n\n{article_text[:300]}\n\n🔗 წყარო: {url}"
+        return f"📰 {title}\n\n{article_text[:300]}"
 
 
 def _send_telegram_photo(image_url: str, caption: str, reply_markup: dict = None):
