@@ -17,9 +17,15 @@ GRAPH_URL  = "https://graph.facebook.com/v18.0"
 
 def post_photo(image_path: str, caption: str = "") -> bool:
     """POST image to {PAGE_ID}/photos.  Returns True on success."""
+    result = post_photo_ext(image_path, caption)
+    return result["success"]
+
+
+def post_photo_ext(image_path: str, caption: str = "") -> dict:
+    """POST image to {PAGE_ID}/photos.  Returns {success, post_id}."""
     if not PAGE_ID or not PAGE_TOKEN:
         print("[FB] Skipped — FB_PAGE_ID / FB_PAGE_TOKEN not set")
-        return False
+        return {"success": False, "post_id": None}
 
     try:
         with open(image_path, "rb") as f:
@@ -35,9 +41,10 @@ def post_photo(image_path: str, caption: str = "") -> bool:
                 timeout=30,
             )
         resp.raise_for_status()
-        print(f"[FB] Posted — id: {resp.json().get('id')}")
-        return True
+        post_id = resp.json().get("id")
+        print(f"[FB] Posted — id: {post_id}")
+        return {"success": True, "post_id": post_id}
 
     except Exception as exc:
         print(f"[FB] Upload failed: {exc}")
-        return False
+        return {"success": False, "post_id": None}

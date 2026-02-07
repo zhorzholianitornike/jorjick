@@ -35,7 +35,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from card_generator import CardGenerator, generate_auto_card
-from facebook import post_photo
+from facebook import post_photo, post_photo_ext
+from activity_log import log_activity, update_activity, get_logs, get_summary, get_top
 from setup_fonts import download as ensure_font
 
 # ---------------------------------------------------------------------------
@@ -1498,7 +1499,8 @@ async def api_generate(
 
     # No auto-upload — user clicks "Upload to Facebook" button
     _add_history(name, f"/cards/{card_id}_card.jpg")
-    return {"card_url": f"/cards/{card_id}_card.jpg"}
+    log_id = log_activity(source="manual", title=name, status="approved", card_image_url=f"/cards/{card_id}_card.jpg")
+    return {"card_url": f"/cards/{card_id}_card.jpg", "log_id": log_id}
 
 
 @app.get("/api/history")
@@ -1753,8 +1755,17 @@ async def api_upload_facebook(
 
     # Upload to Facebook + notify via Telegram
     try:
-        await asyncio.to_thread(_upload_and_notify, str(card_path), name, fb_caption)
-        return {"success": True}
+        result = await asyncio.to_thread(post_photo_ext, str(card_path), fb_caption)
+        if result["success"]:
+            _send_telegram(f"ქარდი ატვირთულია\nქარდის სახელი: {name}")
+            # Determine source from card filename
+            src = "auto_card" if "_auto." in filename else "manual"
+            log_activity(source=src, title=name, status="approved",
+                         card_image_url=card_url, caption=fb_caption,
+                         facebook_post_id=result["post_id"])
+        else:
+            _send_telegram(f"ქარდი ატვირთვა ჩამიდა\nქარდის სახელი: {name}")
+        return {"success": result["success"]}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
@@ -1901,6 +1912,36 @@ async def api_test_rss():
     return {"success": False, "error": "No new articles in any feed"}
 
 
+# ---------------------------------------------------------------------------
+# Analytics API endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/analytics/summary")
+async def api_analytics_summary():
+    """Today/week/month counts, by source, approved/rejected."""
+    return get_summary()
+
+
+@app.get("/api/analytics/logs")
+async def api_analytics_logs(
+    limit: int = 50,
+    offset: int = 0,
+    source: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    """Recent log entries with optional filtering."""
+    logs = get_logs(limit=limit, offset=offset, source=source,
+                    status=status, date_from=date_from, date_to=date_to)
+    return {"logs": logs, "count": len(logs)}
+
+
+@app.get("/api/analytics/top")
+async def api_analytics_top(limit: int = 10):
+    """Top published posts (newest first, ready for engagement sorting)."""
+    return {"posts": get_top(limit=limit)}
+
+
 @app.post("/api/auto-generate")
 async def api_auto_generate(theme: str = Form(...)):
     """Tavily → Gemini → card → Facebook.  Streams progress via SSE."""
@@ -2011,6 +2052,7 @@ async def api_auto_generate(theme: str = Form(...)):
             # No auto-upload — user clicks "Upload to Facebook" button
             card_url = f"/cards/{card_id}_auto.jpg"
             _add_history(name, card_url)
+            log_activity(source="auto_card", title=name, status="approved", card_image_url=card_url, caption=text)
             yield _e({"t": "log", "m": "Ready!"})
             yield _e({"t": "done", "card_url": card_url, "name": name, "article": text})
 
@@ -3027,11 +3069,28 @@ async def _run_telegram():
                         )
 
                     # Upload to Facebook
-                    success = await asyncio.to_thread(post_photo, card_path, caption)
+                    fb_result = await asyncio.to_thread(post_photo_ext, card_path, caption)
 
                     _add_history(display_title, f"/cards/{card_id}_news.jpg")
 
-                    if success:
+                    # Determine source for logging
+                    _src = "interpressnews"
+                    sn = art.get("source_name", "").lower()
+                    if "cnn" in sn:
+                        _src = "rss_cnn"
+                    elif "bbc" in sn:
+                        _src = "rss_bbc"
+                    elif art.get("title_ka"):
+                        _src = "rss_other"
+
+                    log_activity(
+                        source=_src, title=display_title, status="approved",
+                        card_image_url=f"/cards/{card_id}_news.jpg",
+                        caption=caption,
+                        facebook_post_id=fb_result.get("post_id"),
+                    )
+
+                    if fb_result["success"]:
                         _send_telegram(
                             f"✅ Facebook-ზე ატვირთულია!\n\n"
                             f"📰 {display_title}"
@@ -3050,6 +3109,16 @@ async def _run_telegram():
 
         elif action == "reject":
             _seen_news_urls.add(article["url"])
+            # Log rejection
+            _src = "interpressnews"
+            sn = article.get("source_name", "").lower()
+            if "cnn" in sn:
+                _src = "rss_cnn"
+            elif "bbc" in sn:
+                _src = "rss_bbc"
+            elif article.get("title_ka"):
+                _src = "rss_other"
+            log_activity(source=_src, title=article["title"], status="rejected")
             await _edit_msg(
                 f"❌ გამოტოვებულია\n\n"
                 f"<s>{article['title']}</s>"
