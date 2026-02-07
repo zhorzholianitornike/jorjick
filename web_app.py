@@ -468,6 +468,67 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="result" id="res-news"></div>
   </div>
 
+  <!-- RSS source management panel -->
+  <div class="panel">
+    <h2>5 — RSS წყაროების მართვა 📡 <span style="font-size:11px;color:#64748b;font-weight:400">[International News]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">RSS Feeds → Gemini თარგმანი → Telegram დასტური → Facebook</p>
+
+    <!-- Existing sources table -->
+    <div style="overflow-x:auto;margin-bottom:14px;">
+      <table id="rss-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="border-bottom:1px solid #2d3148;text-align:left;">
+            <th style="padding:8px;color:#94a3b8;">სახელი</th>
+            <th style="padding:8px;color:#94a3b8;">კატეგორია</th>
+            <th style="padding:8px;color:#94a3b8;">ინტერვალი</th>
+            <th style="padding:8px;color:#94a3b8;">სტატუსი</th>
+            <th style="padding:8px;color:#94a3b8;"></th>
+          </tr>
+        </thead>
+        <tbody id="rss-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Add new source -->
+    <div style="border-top:1px solid #2d3148;padding-top:14px;">
+      <p style="color:#e2e8f0;font-size:13px;margin-bottom:8px;font-weight:600;">ახალი წყაროს დამატება</p>
+      <div class="row">
+        <div class="g" style="flex:2"><label>სახელი</label>
+          <input id="rss-new-name" placeholder="მაგ: BBC World">
+        </div>
+        <div class="g" style="flex:1"><label>კატეგორია</label>
+          <input id="rss-new-cat" placeholder="მაგ: World" value="World">
+        </div>
+      </div>
+      <div class="row">
+        <div class="g" style="flex:3"><label>RSS URL</label>
+          <input id="rss-new-url" placeholder="https://feeds.bbci.co.uk/news/world/rss.xml">
+        </div>
+        <div class="g" style="flex:1"><label>ინტერვალი (წთ)</label>
+          <input type="number" id="rss-new-interval" value="30" min="5" max="1440" style="text-align:center;">
+        </div>
+      </div>
+      <button class="btn" onclick="addRssSource()" style="margin-top:4px;">➕ წყაროს დამატება</button>
+    </div>
+
+    <!-- Min interval between posts -->
+    <div style="border-top:1px solid #2d3148;padding-top:14px;margin-top:14px;">
+      <div class="row" style="align-items:center;">
+        <div class="g" style="flex:2">
+          <label>მინ. დრო პოსტებს შორის (წუთი)</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="rss-min-interval" value="30" min="5" max="1440"
+              style="width:80px;background:#151620;border:1px solid #2d3148;border-radius:7px;padding:9px 12px;color:#e2e8f0;font-size:16px;text-align:center;">
+            <button class="btn" onclick="setRssMinInterval()" style="padding:8px 16px;">შეცვლა</button>
+            <span style="color:#64748b;font-size:12px;" id="rss-queue-info">რიგში: 0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result" id="res-rss"></div>
+  </div>
+
   <!-- history -->
   <div class="history">
     <h2>Recent Cards</h2>
@@ -1028,6 +1089,77 @@ DASHBOARD = """<!DOCTYPE html>
     updateIntervalLabel(min);
   });
 
+  // ── RSS source management ────────────────────────────────────────
+  async function loadRssSources() {
+    try {
+      const r = await fetch('/api/rss-sources');
+      const d = await r.json();
+      const tbody = document.getElementById('rss-tbody');
+      tbody.innerHTML = '';
+      d.sources.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #1a1d2e';
+        tr.innerHTML =
+          '<td style="padding:8px;color:#e2e8f0;">' + s.name + '</td>' +
+          '<td style="padding:8px;color:#94a3b8;">' + s.category + '</td>' +
+          '<td style="padding:8px;color:#94a3b8;">' + s.interval_min + ' წთ</td>' +
+          '<td style="padding:8px;">' +
+            '<button onclick="toggleRss(\'' + s.id + '\')" style="background:' +
+            (s.enabled ? '#1a5c2e' : '#5c1a1a') +
+            ';border:none;color:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">' +
+            (s.enabled ? '✅ ჩართული' : '❌ გამორთული') + '</button>' +
+          '</td>' +
+          '<td style="padding:8px;">' +
+            '<button onclick="deleteRss(\'' + s.id + '\')" style="background:none;border:1px solid #5c1a1a;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">✕</button>' +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+      document.getElementById('rss-min-interval').value = d.min_interval;
+      document.getElementById('rss-queue-info').textContent = 'რიგში: ' + d.queue_size;
+    } catch(e) { console.error('RSS load failed', e); }
+  }
+
+  window.addRssSource = async function() {
+    const name = document.getElementById('rss-new-name').value.trim();
+    const url = document.getElementById('rss-new-url').value.trim();
+    const cat = document.getElementById('rss-new-cat').value.trim() || 'General';
+    const interval = parseInt(document.getElementById('rss-new-interval').value) || 30;
+    if (!name || !url) { toast('სახელი და URL სავალდებულოა'); return; }
+    const r = await fetch('/api/rss-sources', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, url, category: cat, interval_min: interval})
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast(name + ' დამატებულია!', 'success');
+      document.getElementById('rss-new-name').value = '';
+      document.getElementById('rss-new-url').value = '';
+      loadRssSources();
+    } else { toast(d.error || 'შეცდომა'); }
+  };
+
+  window.toggleRss = async function(id) {
+    await fetch('/api/rss-toggle/' + id, {method:'POST'});
+    loadRssSources();
+  };
+
+  window.deleteRss = async function(id) {
+    await fetch('/api/rss-sources/' + id, {method:'DELETE'});
+    loadRssSources();
+  };
+
+  window.setRssMinInterval = async function() {
+    const min = parseInt(document.getElementById('rss-min-interval').value) || 30;
+    const r = await fetch('/api/rss-settings', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({min_interval: min})
+    });
+    const d = await r.json();
+    if (d.success) toast('მინ. ინტერვალი: ' + d.min_interval + ' წუთი', 'success');
+  };
+
+  loadRssSources();
+
   // ── voice generation ──────────────────────────────────────────────
   const voiceText = document.getElementById('inp-voice-text');
   const charCount = document.getElementById('char-count');
@@ -1540,6 +1672,79 @@ async def api_test_news():
 
     await asyncio.to_thread(_send_news_to_telegram, news_id, chosen)
     return {"success": True, "title": chosen["title"], "news_id": news_id}
+
+
+# ---------------------------------------------------------------------------
+# RSS API endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/rss-sources")
+async def api_get_rss_sources():
+    return {"sources": _rss_sources, "min_interval": _rss_min_interval // 60, "queue_size": len(_rss_queue)}
+
+
+@app.post("/api/rss-sources")
+async def api_add_rss_source(request: dict):
+    global _rss_id_counter
+    name = request.get("name", "").strip()
+    url = request.get("url", "").strip()
+    category = request.get("category", "General").strip()
+    interval = max(5, min(1440, int(request.get("interval_min", 30))))
+    if not name or not url:
+        return JSONResponse(status_code=400, content={"error": "name and url required"})
+    _rss_id_counter += 1
+    source = {
+        "id": f"custom-{_rss_id_counter}",
+        "name": name,
+        "url": url,
+        "category": category,
+        "enabled": True,
+        "interval_min": interval,
+        "last_checked": 0,
+    }
+    _rss_sources.append(source)
+    return {"success": True, "source": source}
+
+
+@app.post("/api/rss-toggle/{source_id}")
+async def api_toggle_rss(source_id: str):
+    for s in _rss_sources:
+        if s["id"] == source_id:
+            s["enabled"] = not s["enabled"]
+            return {"success": True, "id": source_id, "enabled": s["enabled"]}
+    return JSONResponse(status_code=404, content={"error": "source not found"})
+
+
+@app.delete("/api/rss-sources/{source_id}")
+async def api_delete_rss(source_id: str):
+    global _rss_sources
+    before = len(_rss_sources)
+    _rss_sources = [s for s in _rss_sources if s["id"] != source_id]
+    if len(_rss_sources) < before:
+        return {"success": True}
+    return JSONResponse(status_code=404, content={"error": "source not found"})
+
+
+@app.post("/api/rss-interval/{source_id}")
+async def api_set_rss_source_interval(source_id: str, request: dict):
+    minutes = max(5, min(1440, int(request.get("interval_min", 30))))
+    for s in _rss_sources:
+        if s["id"] == source_id:
+            s["interval_min"] = minutes
+            return {"success": True, "id": source_id, "interval_min": minutes}
+    return JSONResponse(status_code=404, content={"error": "source not found"})
+
+
+@app.get("/api/rss-settings")
+async def api_get_rss_settings():
+    return {"min_interval": _rss_min_interval // 60, "queue_size": len(_rss_queue)}
+
+
+@app.post("/api/rss-settings")
+async def api_set_rss_settings(request: dict):
+    global _rss_min_interval
+    minutes = max(5, min(1440, int(request.get("min_interval", 30))))
+    _rss_min_interval = minutes * 60
+    return {"success": True, "min_interval": minutes}
 
 
 @app.post("/api/auto-generate")
@@ -2125,6 +2330,150 @@ def _employee_lookup_openai(question: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# RSS Feed Management — sources, fetcher, queue, translation
+# ---------------------------------------------------------------------------
+import time as _time
+
+_rss_sources: list[dict] = [
+    {"id": "cnn-top",     "name": "CNN Top Stories", "url": "http://rss.cnn.com/rss/edition.rss",       "category": "World",    "enabled": True, "interval_min": 30, "last_checked": 0},
+    {"id": "cnn-world",   "name": "CNN World",       "url": "http://rss.cnn.com/rss/edition_world.rss", "category": "World",    "enabled": True, "interval_min": 30, "last_checked": 0},
+    {"id": "cnn-business","name": "CNN Business",     "url": "http://rss.cnn.com/rss/money_latest.rss",  "category": "Business", "enabled": True, "interval_min": 30, "last_checked": 0},
+]
+_rss_seen_urls: set = set()
+_rss_queue: list[dict] = []       # [{title, title_ka, desc_ka, url, image_url, source_name, source_cat}]
+_rss_min_interval: int = 1800     # min seconds between two posts (default 30 min)
+_rss_id_counter: int = 100
+
+
+def _fetch_rss_feed(source: dict) -> list[dict]:
+    """Fetch and parse a single RSS feed. Returns list of new articles."""
+    import feedparser
+
+    try:
+        feed = feedparser.parse(source["url"])
+        articles = []
+        for entry in feed.entries[:10]:
+            link = entry.get("link", "")
+            title = entry.get("title", "")
+            if not link or not title:
+                continue
+            if link in _rss_seen_urls:
+                continue
+
+            # Try to extract image
+            image_url = None
+            if hasattr(entry, "media_content") and entry.media_content:
+                image_url = entry.media_content[0].get("url")
+            elif hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
+                image_url = entry.media_thumbnail[0].get("url")
+            elif hasattr(entry, "enclosures") and entry.enclosures:
+                for enc in entry.enclosures:
+                    if "image" in enc.get("type", ""):
+                        image_url = enc.get("href")
+                        break
+
+            desc = entry.get("summary", entry.get("description", ""))
+            # Strip HTML from description
+            if desc and "<" in desc:
+                from bs4 import BeautifulSoup
+                desc = BeautifulSoup(desc, "html.parser").get_text(strip=True)
+
+            articles.append({
+                "title": title,
+                "url": link,
+                "description": desc[:500] if desc else "",
+                "image_url": image_url,
+                "source_name": source["name"],
+                "source_cat": source["category"],
+            })
+
+        return articles
+    except Exception as exc:
+        print(f"[RSS] Fetch failed for {source['name']}: {exc}")
+        return []
+
+
+def _translate_to_georgian(title: str, description: str) -> dict:
+    """Translate title + description to Georgian via Gemini."""
+    from google import genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"title_ka": title, "desc_ka": description}
+
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "თარგმნე შემდეგი ინგლისური სიახლე ქართულად.\n"
+            "პასუხი მხოლოდ JSON ფორმატში, სხვა არაფერი:\n"
+            '{"title_ka":"სათაური ქართულად","desc_ka":"აღწერა ქართულად 2-3 წინადადებით"}\n\n'
+            f"Title: {title}\n"
+            f"Description: {description[:400]}"
+        )
+
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        raw = resp.text.strip()
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        start = raw.index("{")
+        end = raw.rindex("}")
+        data = json.loads(raw[start:end + 1])
+        return {
+            "title_ka": data.get("title_ka", title),
+            "desc_ka": data.get("desc_ka", description),
+        }
+    except Exception as exc:
+        print(f"[RSS] Translation failed: {exc}")
+        return {"title_ka": title, "desc_ka": description}
+
+
+def _send_rss_news_to_telegram(news_id: str, article: dict):
+    """Send an RSS news article to Telegram with approve/reject buttons."""
+    source_label = f"📡 {article.get('source_name', 'RSS')}"
+    caption = (
+        f"📰 <b>ახალი სიახლე</b> — {source_label}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"<b>{article.get('title_ka', article['title'])}</b>\n\n"
+        f"{article.get('desc_ka', '')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    reply_markup = {
+        "inline_keyboard": [[
+            {"text": "✅ დადასტურება", "callback_data": f"news_approve:{news_id}"},
+            {"text": "❌ უარყოფა", "callback_data": f"news_reject:{news_id}"},
+        ]]
+    }
+
+    if article.get("image_url"):
+        result = _send_telegram_photo(article["image_url"], caption, reply_markup)
+        if result and result.get("ok"):
+            return
+
+    # Fallback to text
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_ADMIN_ID,
+                "text": caption,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+            },
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"[RSS] TG send failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # interpressnews.ge scraper + auto-news state
 # ---------------------------------------------------------------------------
 _pending_news: dict = {}       # {news_id: {title, url, image_url, time}}
@@ -2505,30 +2854,37 @@ async def _run_telegram():
                         _save_photo_as_card, photo_path, card_path
                     )
 
-                    # Scrape full article text for better caption
-                    article_text = await asyncio.to_thread(
-                        _scrape_article_text, art["url"]
-                    )
+                    # Generate Facebook caption
+                    display_title = art.get("title_ka") or art["title"]
 
-                    # Generate detailed Facebook caption with hashtags via Gemini
-                    caption = await asyncio.to_thread(
-                        _generate_fb_caption, art["title"], article_text, art["url"]
-                    )
+                    if art.get("title_ka"):
+                        # RSS article — already translated, use desc_ka
+                        caption = await asyncio.to_thread(
+                            _generate_fb_caption, display_title, art.get("desc_ka", ""), ""
+                        )
+                    else:
+                        # IPN article — scrape full text
+                        article_text = await asyncio.to_thread(
+                            _scrape_article_text, art["url"]
+                        )
+                        caption = await asyncio.to_thread(
+                            _generate_fb_caption, display_title, article_text, ""
+                        )
 
                     # Upload to Facebook
                     success = await asyncio.to_thread(post_photo, card_path, caption)
 
-                    _add_history(art["title"], f"/cards/{card_id}_news.jpg")
+                    _add_history(display_title, f"/cards/{card_id}_news.jpg")
 
                     if success:
                         _send_telegram(
                             f"✅ Facebook-ზე ატვირთულია!\n\n"
-                            f"📰 {art['title']}"
+                            f"📰 {display_title}"
                         )
                     else:
                         _send_telegram(
                             f"⚠️ Facebook ატვირთვა ვერ მოხერხდა\n\n"
-                            f"📰 {art['title']}"
+                            f"📰 {display_title}"
                         )
 
                 except Exception as exc:
@@ -2588,6 +2944,8 @@ async def on_startup():
     asyncio.create_task(_run_telegram())            # telegram runs alongside FastAPI
     asyncio.create_task(_hourly_status_report())    # hourly status reports
     asyncio.create_task(_auto_news_loop())          # auto-news every 15 min
+    asyncio.create_task(_rss_checker_loop())         # RSS feed checker
+    asyncio.create_task(_rss_queue_sender_loop())    # RSS queue sender
 
 
 # ---------------------------------------------------------------------------
@@ -2680,6 +3038,87 @@ async def _auto_news_loop():
             print(f"[News] Loop error: {exc}")
 
         await asyncio.sleep(_news_interval)
+
+
+# ---------------------------------------------------------------------------
+# RSS checker loop — checks all active feeds on their individual intervals
+# ---------------------------------------------------------------------------
+async def _rss_checker_loop():
+    """Check all active RSS feeds and add new articles to the queue."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        print("[RSS] No TELEGRAM_BOT_TOKEN or ADMIN_ID — RSS checker disabled")
+        return
+
+    await asyncio.sleep(90)  # wait for bot to initialize
+    print("[RSS] Checker loop started")
+
+    while True:
+        try:
+            now = _time.time()
+            for source in _rss_sources:
+                if not source["enabled"]:
+                    continue
+                interval_sec = source["interval_min"] * 60
+                if now - source["last_checked"] < interval_sec:
+                    continue
+
+                source["last_checked"] = now
+                articles = await asyncio.to_thread(_fetch_rss_feed, source)
+                new_count = 0
+
+                for art in articles:
+                    if art["url"] in _rss_seen_urls:
+                        continue
+                    _rss_seen_urls.add(art["url"])
+
+                    # Translate to Georgian via Gemini
+                    tr = await asyncio.to_thread(
+                        _translate_to_georgian, art["title"], art["description"]
+                    )
+                    art["title_ka"] = tr["title_ka"]
+                    art["desc_ka"] = tr["desc_ka"]
+
+                    _rss_queue.append(art)
+                    new_count += 1
+
+                if new_count:
+                    print(f"[RSS] {source['name']}: +{new_count} new → queue={len(_rss_queue)}")
+
+        except Exception as exc:
+            print(f"[RSS] Checker error: {exc}")
+
+        await asyncio.sleep(60)  # check every 60s which feeds are due
+
+
+# ---------------------------------------------------------------------------
+# RSS queue sender — sends queued articles at min_interval spacing
+# ---------------------------------------------------------------------------
+async def _rss_queue_sender_loop():
+    """Send queued RSS articles to Telegram, respecting min_interval."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return
+
+    await asyncio.sleep(120)  # wait for checker to populate
+    print("[RSS] Queue sender started")
+
+    while True:
+        try:
+            if _rss_queue:
+                article = _rss_queue.pop(0)
+                news_id = uuid.uuid4().hex[:8]
+                _pending_news[news_id] = article  # reuse same approval flow
+
+                await asyncio.to_thread(_send_rss_news_to_telegram, news_id, article)
+                print(f"[RSS] Sent from queue: {article.get('title_ka', article['title'])[:50]}...")
+
+                # Wait min_interval before sending next
+                await asyncio.sleep(_rss_min_interval)
+            else:
+                await asyncio.sleep(30)  # check queue every 30s
+
+        except Exception as exc:
+            print(f"[RSS] Sender error: {exc}")
+            await asyncio.sleep(60)
 
 
 # ---------------------------------------------------------------------------
