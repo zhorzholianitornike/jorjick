@@ -1965,7 +1965,9 @@ async def api_analytics_sheets_test():
         info["row_count"] = sheet.row_count
         return {"ok": True, **info}
     except Exception as e:
-        info["error"] = str(e)
+        import traceback
+        info["error"] = repr(e)
+        info["traceback"] = traceback.format_exc()[-500:]
         return {"ok": False, **info}
 
 
