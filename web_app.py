@@ -2412,6 +2412,7 @@ _rss_sources: list[dict] = [
     {"id": "cnn-top",     "name": "CNN Top Stories", "url": "http://rss.cnn.com/rss/edition.rss",       "category": "World",    "enabled": True, "interval_min": 30, "last_checked": 0},
     {"id": "cnn-world",   "name": "CNN World",       "url": "http://rss.cnn.com/rss/edition_world.rss", "category": "World",    "enabled": True, "interval_min": 30, "last_checked": 0},
     {"id": "cnn-business","name": "CNN Business",     "url": "http://rss.cnn.com/rss/money_latest.rss",  "category": "Business", "enabled": True, "interval_min": 30, "last_checked": 0},
+    {"id": "bbc-news",    "name": "BBC News",         "url": "https://feeds.bbci.co.uk/news/rss.xml",    "category": "World",    "enabled": True, "interval_min": 30, "last_checked": 0},
 ]
 _rss_seen_urls: set = set()
 _rss_queue: list[dict] = []       # [{title, title_ka, desc_ka, url, image_url, source_name, source_cat}]
