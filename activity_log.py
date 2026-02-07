@@ -87,6 +87,97 @@ def _get_sheet():
         return None
 
 
+_sheet_formatted = False
+
+
+def format_sheet():
+    """Apply professional formatting to Google Sheet (idempotent per process)."""
+    global _sheet_formatted
+    if _sheet_formatted:
+        return
+    try:
+        sheet = _get_sheet()
+        if sheet is None:
+            return
+
+        spreadsheet = sheet.spreadsheet
+        sheet_id = sheet._properties['sheetId']
+
+        # Header styling
+        header_range = f"A1:{chr(64 + len(HEADERS))}1"
+        sheet.format(header_range, {
+            "backgroundColor": {"red": 0.12, "green": 0.14, "blue": 0.22},
+            "textFormat": {"bold": True, "foregroundColor": {"red": 0.9, "green": 0.93, "blue": 0.96}},
+            "horizontalAlignment": "CENTER",
+        })
+
+        requests_body = []
+
+        # Column widths
+        col_widths = [120, 180, 180, 130, 300, 100, 150, 250, 300]
+        for i, w in enumerate(col_widths):
+            requests_body.append({
+                "updateDimensionProperties": {
+                    "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i + 1},
+                    "properties": {"pixelSize": w},
+                    "fields": "pixelSize",
+                }
+            })
+
+        # Conditional formatting: approved = green
+        status_col = HEADERS.index("status")
+        requests_body.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": status_col, "endColumnIndex": status_col + 1}],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "approved"}]},
+                        "format": {"backgroundColor": {"red": 0.2, "green": 0.5, "blue": 0.2},
+                                   "textFormat": {"foregroundColor": {"red": 0.29, "green": 0.87, "blue": 0.5}}},
+                    },
+                },
+                "index": 0,
+            }
+        })
+
+        # Conditional formatting: rejected = red
+        requests_body.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": status_col, "endColumnIndex": status_col + 1}],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "rejected"}]},
+                        "format": {"backgroundColor": {"red": 0.5, "green": 0.15, "blue": 0.15},
+                                   "textFormat": {"foregroundColor": {"red": 0.97, "green": 0.44, "blue": 0.44}}},
+                    },
+                },
+                "index": 1,
+            }
+        })
+
+        # Auto-filter on headers
+        requests_body.append({
+            "setBasicFilter": {
+                "filter": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "startColumnIndex": 0, "endColumnIndex": len(HEADERS)}}
+            }
+        })
+
+        # Freeze header row
+        requests_body.append({
+            "updateSheetProperties": {
+                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
+                "fields": "gridProperties.frozenRowCount",
+            }
+        })
+
+        spreadsheet.batch_update({"requests": requests_body})
+        _sheet_formatted = True
+        print("[ActivityLog] Sheet formatting applied")
+
+    except Exception as e:
+        print(f"[ActivityLog] format_sheet error: {e}")
+
+
 def _gs_append(entry: dict):
     """Append a row to Google Sheet (non-blocking, ignore errors)."""
     try:
@@ -171,6 +262,8 @@ def _startup():
         _logs = gs_data
     else:
         _load_local()
+    # Apply sheet formatting (idempotent)
+    format_sheet()
 
 
 _startup()
@@ -295,6 +388,28 @@ def get_summary() -> dict:
         "rejected": rejected,
         "published": published,
         "by_source": by_source,
+    }
+
+
+def get_today_detail() -> dict:
+    """Get today's breakdown: by_source, approved/rejected/published counts."""
+    now = datetime.now(TBILISI)
+    today_str = now.strftime("%Y-%m-%d")
+
+    with _lock:
+        today_logs = [e for e in _logs if str(e.get("timestamp", "")).startswith(today_str)]
+
+    by_source = {}
+    for e in today_logs:
+        src = e.get("source", "unknown")
+        by_source[src] = by_source.get(src, 0) + 1
+
+    return {
+        "total_today": len(today_logs),
+        "by_source": by_source,
+        "approved": sum(1 for e in today_logs if e.get("status") == "approved"),
+        "rejected": sum(1 for e in today_logs if e.get("status") == "rejected"),
+        "published": sum(1 for e in today_logs if e.get("facebook_post_id")),
     }
 
 

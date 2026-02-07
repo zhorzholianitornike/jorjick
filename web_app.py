@@ -36,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 
 from card_generator import CardGenerator, generate_auto_card
 from facebook import post_photo, post_photo_ext
-from activity_log import log_activity, update_activity, get_logs, get_summary, get_top
+from activity_log import log_activity, update_activity, get_logs, get_summary, get_top, get_today_detail
 from setup_fonts import download as ensure_font
 
 # ---------------------------------------------------------------------------
@@ -311,6 +311,24 @@ DASHBOARD = """<!DOCTYPE html>
   .hcard .inf  { padding:9px 11px; }
   .hcard .inf .n { font-size:13px; font-weight:600; color:#fff; }
   .hcard .inf .t { font-size:11px; color:#64748b; margin-top:2px; }
+  /* analytics panel */
+  .a-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin-bottom:18px; }
+  .a-card   { background:#151620; border:1px solid #2d3148; border-radius:8px; padding:14px; text-align:center; }
+  .a-card .av { font-size:22px; font-weight:700; color:#1e94b9; }
+  .a-card .al { font-size:11px; color:#94a3b8; margin-top:4px; text-transform:uppercase; letter-spacing:.3px; }
+  .a-src    { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .a-src-tag { padding:6px 14px; background:#151620; border:1px solid #2d3148; border-radius:20px; font-size:12px; color:#e2e8f0; }
+  .a-src-tag .cnt { font-weight:700; color:#1e94b9; margin-left:4px; }
+  .a-filters { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .a-filters select { background:#151620; border:1px solid #2d3148; border-radius:7px; padding:8px 12px; color:#e2e8f0; font-size:13px; outline:none; }
+  .a-tbl    { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+  .a-tbl th { text-align:left; padding:8px 10px; color:#94a3b8; border-bottom:1px solid #2d3148; font-size:11px; text-transform:uppercase; }
+  .a-tbl td { padding:8px 10px; border-bottom:1px solid #1a1c2e; color:#cbd5e1; }
+  .a-tbl tr:hover td { background:#151620; }
+  .st-badge { padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .st-ok  { background:rgba(74,222,128,0.15); color:#4ade80; }
+  .st-no  { background:rgba(248,113,113,0.15); color:#f87171; }
+  .st-wait { background:rgba(251,191,36,0.15); color:#fbbf24; }
 </style>
 </head>
 <body>
@@ -530,6 +548,54 @@ DASHBOARD = """<!DOCTYPE html>
     <button class="btn" onclick="sendTestRss()" style="margin-top:8px;background:#1a5c2e;">📡 სატესტო RSS გაგზავნა</button>
     <div class="spin" id="spin-rss"></div>
     <div class="result" id="res-rss"></div>
+  </div>
+
+  <!-- analytics panel -->
+  <div class="panel">
+    <h2>6 — ანალიტიკა 📊 <span style="font-size:11px;color:#64748b;font-weight:400">[Activity Log]</span></h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:14px">აქტივობის სტატისტიკა და ლოგები</p>
+    <button class="btn" data-action="load-analytics" style="margin-top:0;margin-bottom:18px;">🔄 სტატისტიკის განახლება</button>
+    <div class="spin" id="spin-analytics"></div>
+
+    <div class="a-grid" id="a-grid">
+      <div class="a-card"><div class="av" id="a-today">-</div><div class="al">დღეს</div></div>
+      <div class="a-card"><div class="av" id="a-week">-</div><div class="al">კვირა</div></div>
+      <div class="a-card"><div class="av" id="a-month">-</div><div class="al">თვე</div></div>
+      <div class="a-card"><div class="av" id="a-total">-</div><div class="al">სულ</div></div>
+      <div class="a-card"><div class="av" id="a-approved" style="color:#4ade80">-</div><div class="al">დამტკიცებული</div></div>
+      <div class="a-card"><div class="av" id="a-rejected" style="color:#f87171">-</div><div class="al">უარყოფილი</div></div>
+      <div class="a-card"><div class="av" id="a-published" style="color:#1877f2">-</div><div class="al">გამოქვეყნებული</div></div>
+    </div>
+
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">წყაროების მიხედვით:</div>
+    <div class="a-src" id="a-src"></div>
+
+    <div style="border-top:1px solid #2d3148;padding-top:14px;margin-top:8px;">
+      <p style="color:#e2e8f0;font-size:13px;margin-bottom:8px;font-weight:600;">აქტივობის ლოგი</p>
+      <div class="a-filters">
+        <select id="a-fsrc" data-action="filter-analytics">
+          <option value="">ყველა წყარო</option>
+          <option value="interpressnews">interpressnews</option>
+          <option value="rss_cnn">RSS CNN</option>
+          <option value="rss_bbc">RSS BBC</option>
+          <option value="rss_other">RSS Other</option>
+          <option value="manual">manual</option>
+          <option value="auto_card">auto_card</option>
+        </select>
+        <select id="a-fst" data-action="filter-analytics">
+          <option value="">ყველა სტატუსი</option>
+          <option value="approved">დამტკიცებული</option>
+          <option value="rejected">უარყოფილი</option>
+          <option value="pending">მოლოდინში</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="a-tbl">
+          <thead><tr><th>დრო</th><th>წყარო</th><th>სათაური</th><th>სტატუსი</th><th>FB</th></tr></thead>
+          <tbody id="a-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- history -->
@@ -1419,6 +1485,53 @@ DASHBOARD = """<!DOCTYPE html>
       svg.appendChild(arrow);
     });
   }
+  // -- analytics --
+  async function loadAnalytics() {
+    var spin = document.getElementById('spin-analytics');
+    spin.style.display = 'block';
+    try {
+      var r = await fetch('/api/analytics/summary');
+      var s = await r.json();
+      document.getElementById('a-today').textContent = s.today;
+      document.getElementById('a-week').textContent = s.week;
+      document.getElementById('a-month').textContent = s.month;
+      document.getElementById('a-total').textContent = s.total;
+      document.getElementById('a-approved').textContent = s.approved;
+      document.getElementById('a-rejected').textContent = s.rejected;
+      document.getElementById('a-published').textContent = s.published;
+      var srcDiv = document.getElementById('a-src');
+      srcDiv.innerHTML = '';
+      for (var k in (s.by_source || {})) {
+        srcDiv.innerHTML += '<div class="a-src-tag">' + esc(k) + '<span class="cnt">' + s.by_source[k] + '</span></div>';
+      }
+      await loadALogs();
+    } catch(e) { toast('ანალიტიკა: ' + e.message); }
+    finally { spin.style.display = 'none'; }
+  }
+  async function loadALogs() {
+    var src = document.getElementById('a-fsrc').value;
+    var st = document.getElementById('a-fst').value;
+    var url = '/api/analytics/logs?limit=30';
+    if (src) url += '&source=' + encodeURIComponent(src);
+    if (st) url += '&status=' + encodeURIComponent(st);
+    var d = await (await fetch(url)).json();
+    var tb = document.getElementById('a-tbody');
+    tb.innerHTML = '';
+    (d.logs || []).forEach(function(l) {
+      var ts = (l.timestamp || '').replace('T',' ').slice(0,16);
+      var sc = l.status === 'approved' ? 'st-ok' : l.status === 'rejected' ? 'st-no' : 'st-wait';
+      var sl = l.status === 'approved' ? 'დამტკ.' : l.status === 'rejected' ? 'უარყ.' : 'მოლოდ.';
+      var fb = l.facebook_post_id ? '✅' : '—';
+      tb.innerHTML += '<tr><td>' + esc(ts) + '</td><td>' + esc(l.source||'') + '</td><td>' + esc((l.title||'').slice(0,40)) + '</td><td><span class="st-badge ' + sc + '">' + sl + '</span></td><td>' + fb + '</td></tr>';
+    });
+  }
+  document.addEventListener('click', function(e) {
+    if (e.target.dataset.action === 'load-analytics') loadAnalytics();
+  });
+  document.addEventListener('change', function(e) {
+    if (e.target.dataset.action === 'filter-analytics') loadALogs();
+  });
+  loadAnalytics();
 })();
 </script>
 </body>
@@ -3226,6 +3339,18 @@ async def _hourly_status_report():
             hours = int(uptime.total_seconds() // 3600)
             minutes = int((uptime.total_seconds() % 3600) // 60)
 
+            # Get today's analytics
+            try:
+                detail = await asyncio.to_thread(get_today_detail)
+            except Exception:
+                detail = {"total_today": 0, "by_source": {}, "approved": 0, "rejected": 0, "published": 0}
+
+            src_lines = ""
+            for src, count in detail["by_source"].items():
+                src_lines += f"  · {src}: {count}\n"
+            if not src_lines:
+                src_lines = "  · —\n"
+
             report = (
                 f"📊 საათობრივი რეპორტი — {now.strftime('%H:%M  %d/%m/%Y')}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -3233,7 +3358,13 @@ async def _hourly_status_report():
                 f"⏱ აქტიურია: {hours}სთ {minutes}წთ\n"
                 f"🃏 შექმნილი ქარდები: {len(history)}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🤖 რუსთავი 2-ის აგენტი აქტიურია და მზადყოფნაშია!"
+                f"📰 დღევანდელი აქტივობა: {detail['total_today']}\n"
+                f"{src_lines}"
+                f"✅ დამტკიცებული: {detail['approved']}\n"
+                f"❌ უარყოფილი: {detail['rejected']}\n"
+                f"📘 გამოქვეყნებული: {detail['published']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🤖 აგენტი აქტიურია და მზადყოფნაშია!"
             )
 
             await asyncio.to_thread(_send_telegram, report)
