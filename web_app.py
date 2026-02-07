@@ -1942,6 +1942,23 @@ async def api_analytics_top(limit: int = 10):
     return {"posts": get_top(limit=limit)}
 
 
+@app.get("/api/analytics/sheets-test")
+async def api_analytics_sheets_test():
+    """Diagnostic: test Google Sheets connection."""
+    import activity_log
+    try:
+        creds_env = os.environ.get("GOOGLE_SHEETS_CREDS", "")
+        has_creds = bool(creds_env)
+        creds_len = len(creds_env)
+        sheet = activity_log._get_sheet()
+        if sheet is None:
+            return {"ok": False, "error": "Sheet is None (no creds or connection failed)", "has_creds": has_creds, "creds_len": creds_len}
+        row_count = sheet.row_count
+        return {"ok": True, "row_count": row_count, "has_creds": has_creds, "creds_len": creds_len}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "has_creds": bool(os.environ.get("GOOGLE_SHEETS_CREDS"))}
+
+
 @app.post("/api/auto-generate")
 async def api_auto_generate(theme: str = Form(...)):
     """Tavily → Gemini → card → Facebook.  Streams progress via SSE."""
