@@ -1944,19 +1944,29 @@ async def api_analytics_top(limit: int = 10):
 
 @app.get("/api/analytics/sheets-test")
 async def api_analytics_sheets_test():
-    """Diagnostic: test Google Sheets connection."""
-    import activity_log
+    """Diagnostic: test Google Sheets connection directly."""
+    import json as _json
+    creds_env = os.environ.get("GOOGLE_SHEETS_CREDS", "")
+    info = {"has_creds": bool(creds_env), "creds_len": len(creds_env)}
     try:
-        creds_env = os.environ.get("GOOGLE_SHEETS_CREDS", "")
-        has_creds = bool(creds_env)
-        creds_len = len(creds_env)
-        sheet = activity_log._get_sheet()
-        if sheet is None:
-            return {"ok": False, "error": "Sheet is None (no creds or connection failed)", "has_creds": has_creds, "creds_len": creds_len}
-        row_count = sheet.row_count
-        return {"ok": True, "row_count": row_count, "has_creds": has_creds, "creds_len": creds_len}
+        creds_data = _json.loads(creds_env)
+        info["client_email"] = creds_data.get("client_email", "MISSING")
+        info["project_id"] = creds_data.get("project_id", "MISSING")
     except Exception as e:
-        return {"ok": False, "error": str(e), "has_creds": bool(os.environ.get("GOOGLE_SHEETS_CREDS"))}
+        info["json_parse_error"] = str(e)
+        return {"ok": False, **info}
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        credentials = Credentials.from_service_account_info(creds_data, scopes=scopes)
+        client = gspread.authorize(credentials)
+        sheet = client.open_by_key("1oTom_4hmc8-qFgEhtdeNc3Iype9gY8V7taKGKwmR3Vo").worksheet("Sheet1")
+        info["row_count"] = sheet.row_count
+        return {"ok": True, **info}
+    except Exception as e:
+        info["error"] = str(e)
+        return {"ok": False, **info}
 
 
 @app.post("/api/auto-generate")
