@@ -526,6 +526,8 @@ DASHBOARD = """<!DOCTYPE html>
       </div>
     </div>
 
+    <button class="btn" onclick="sendTestRss()" style="margin-top:8px;background:#1a5c2e;">📡 სატესტო RSS გაგზავნა</button>
+    <div class="spin" id="spin-rss"></div>
     <div class="result" id="res-rss"></div>
   </div>
 
@@ -1158,6 +1160,27 @@ DASHBOARD = """<!DOCTYPE html>
     if (d.success) toast('მინ. ინტერვალი: ' + d.min_interval + ' წუთი', 'success');
   };
 
+  window.sendTestRss = async function() {
+    const spin = document.getElementById('spin-rss');
+    const res = document.getElementById('res-rss');
+    spin.style.display = 'block';
+    res.innerHTML = '';
+    try {
+      const r = await fetch('/api/test-rss', {method:'POST'});
+      const d = await r.json();
+      spin.style.display = 'none';
+      if (d.success) {
+        res.innerHTML = '<span style="color:#4ade80">📡 ' + d.source + ': ' + d.title.substring(0,60) + '...</span>';
+        toast('RSS სიახლე გაგზავნილია Telegram-ზე!', 'success');
+      } else {
+        res.innerHTML = '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>';
+      }
+    } catch(e) {
+      spin.style.display = 'none';
+      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+    }
+  };
+
   loadRssSources();
 
   // ── voice generation ──────────────────────────────────────────────
@@ -1745,6 +1768,34 @@ async def api_set_rss_settings(request: dict):
     minutes = max(5, min(1440, int(request.get("min_interval", 30))))
     _rss_min_interval = minutes * 60
     return {"success": True, "min_interval": minutes}
+
+
+@app.post("/api/test-rss")
+async def api_test_rss():
+    """Manually fetch one RSS article, translate, and send to Telegram."""
+    enabled = [s for s in _rss_sources if s["enabled"]]
+    if not enabled:
+        return {"success": False, "error": "No enabled RSS sources"}
+
+    for source in enabled:
+        articles = await asyncio.to_thread(_fetch_rss_feed, source)
+        new_arts = [a for a in articles if a["url"] not in _rss_seen_urls]
+        if not new_arts:
+            continue
+
+        art = new_arts[0]
+        _rss_seen_urls.add(art["url"])
+
+        tr = await asyncio.to_thread(_translate_to_georgian, art["title"], art["description"])
+        art["title_ka"] = tr["title_ka"]
+        art["desc_ka"] = tr["desc_ka"]
+
+        news_id = uuid.uuid4().hex[:8]
+        _pending_news[news_id] = art
+        await asyncio.to_thread(_send_rss_news_to_telegram, news_id, art)
+        return {"success": True, "title": art["title_ka"], "source": source["name"]}
+
+    return {"success": False, "error": "No new articles in any feed"}
 
 
 @app.post("/api/auto-generate")
