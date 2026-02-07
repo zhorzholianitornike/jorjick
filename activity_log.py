@@ -29,7 +29,9 @@ LOG_FILE = DATA_DIR / "activity_log.json"
 # Column headers for Google Sheet
 HEADERS = ["id", "timestamp", "published_at", "source", "title",
            "status", "facebook_post_id", "card_image_url", "caption",
-           "likes", "comments", "shares", "reach"]
+           "likes", "comments", "shares", "reach",
+           "reactions_love", "reactions_haha", "reactions_wow",
+           "reactions_sad", "reactions_angry", "clicks", "post_reach"]
 
 _lock = threading.Lock()
 _logs: list[dict] = []
@@ -77,7 +79,7 @@ def _get_sheet():
 
         # Ensure headers exist
         existing = _gs_sheet.row_values(1)
-        if not existing or existing[0] != HEADERS[0]:
+        if not existing or existing[0] != HEADERS[0] or len(existing) < len(HEADERS):
             _gs_sheet.update("A1", [HEADERS])
 
         print(f"[ActivityLog] Google Sheets connected: {SHEET_ID}")
@@ -115,7 +117,8 @@ def format_sheet():
         requests_body = []
 
         # Column widths
-        col_widths = [120, 180, 180, 130, 300, 100, 150, 250, 300, 80, 80, 80, 80]
+        col_widths = [120, 180, 180, 130, 300, 100, 150, 250, 300, 80, 80, 80, 80,
+                      80, 80, 80, 80, 80, 80, 80]
         for i, w in enumerate(col_widths):
             requests_body.append({
                 "updateDimensionProperties": {
@@ -305,6 +308,13 @@ def log_activity(
         "comments": 0,
         "shares": 0,
         "reach": 0,
+        "reactions_love": 0,
+        "reactions_haha": 0,
+        "reactions_wow": 0,
+        "reactions_sad": 0,
+        "reactions_angry": 0,
+        "clicks": 0,
+        "post_reach": 0,
     }
 
     with _lock:
@@ -423,3 +433,93 @@ def get_top(limit: int = 10) -> list[dict]:
     with _lock:
         published = [e for e in _logs if e.get("facebook_post_id")]
     return list(reversed(published))[:limit]
+
+
+def get_weekly_summary() -> dict:
+    """Comprehensive weekly summary: engagement, reactions, best hour, source performance."""
+    now = datetime.now(TBILISI)
+    week_ago = (now - timedelta(days=7)).isoformat()
+
+    with _lock:
+        week_logs = [e for e in _logs if e.get("timestamp", "") >= week_ago]
+
+    published = [e for e in week_logs if e.get("facebook_post_id")]
+
+    by_source = {}
+    for e in published:
+        src = e.get("source", "unknown")
+        by_source[src] = by_source.get(src, 0) + 1
+
+    total_likes = sum(int(e.get("likes", 0) or 0) for e in published)
+    total_comments = sum(int(e.get("comments", 0) or 0) for e in published)
+    total_shares = sum(int(e.get("shares", 0) or 0) for e in published)
+    total_reach = sum(int(e.get("post_reach", 0) or 0) for e in published)
+
+    reactions = {
+        "love": sum(int(e.get("reactions_love", 0) or 0) for e in published),
+        "haha": sum(int(e.get("reactions_haha", 0) or 0) for e in published),
+        "wow": sum(int(e.get("reactions_wow", 0) or 0) for e in published),
+        "sad": sum(int(e.get("reactions_sad", 0) or 0) for e in published),
+        "angry": sum(int(e.get("reactions_angry", 0) or 0) for e in published),
+    }
+
+    total_engagement = total_likes + total_comments + total_shares
+    engagement_rate = (total_engagement / total_reach * 100) if total_reach > 0 else 0.0
+
+    # Top posts by engagement
+    scored = []
+    for p in published:
+        eng = int(p.get("likes", 0) or 0) + int(p.get("comments", 0) or 0) + int(p.get("shares", 0) or 0)
+        scored.append({**p, "_eng": eng})
+    scored.sort(key=lambda x: x["_eng"], reverse=True)
+
+    # Best posting hour
+    hour_eng = {}
+    hour_cnt = {}
+    for e in published:
+        pub_at = e.get("published_at", "")
+        if not pub_at:
+            continue
+        try:
+            h = datetime.fromisoformat(str(pub_at)).hour
+            eng = int(e.get("likes", 0) or 0) + int(e.get("comments", 0) or 0) + int(e.get("shares", 0) or 0)
+            hour_eng[h] = hour_eng.get(h, 0) + eng
+            hour_cnt[h] = hour_cnt.get(h, 0) + 1
+        except (ValueError, TypeError):
+            continue
+
+    best_hour = None
+    best_avg = 0
+    for h, total in hour_eng.items():
+        avg = total / hour_cnt[h] if hour_cnt[h] > 0 else 0
+        if avg > best_avg:
+            best_avg = avg
+            best_hour = h
+
+    # Source performance
+    source_perf = {}
+    for e in published:
+        src = e.get("source", "unknown")
+        eng = int(e.get("likes", 0) or 0) + int(e.get("comments", 0) or 0) + int(e.get("shares", 0) or 0)
+        if src not in source_perf:
+            source_perf[src] = {"total_eng": 0, "count": 0}
+        source_perf[src]["total_eng"] += eng
+        source_perf[src]["count"] += 1
+    for src in source_perf:
+        sp = source_perf[src]
+        sp["avg_eng"] = round(sp["total_eng"] / sp["count"], 1) if sp["count"] > 0 else 0
+
+    return {
+        "total_posts": len(published),
+        "by_source": by_source,
+        "likes": total_likes,
+        "comments": total_comments,
+        "shares": total_shares,
+        "reactions": reactions,
+        "engagement_rate": round(engagement_rate, 1),
+        "avg_engagement": round(total_engagement / len(published), 1) if published else 0,
+        "top_posts": scored[:5],
+        "best_hour": best_hour,
+        "week_reach": total_reach,
+        "source_performance": source_perf,
+    }

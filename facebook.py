@@ -59,11 +59,13 @@ def get_post_insights(post_id: str) -> dict:
     Tries post_id first. If it looks like a bare photo ID (no underscore),
     also tries PAGE_ID_PHOTO_ID format as fallback.
     """
+    _zero = {"likes": 0, "comments": 0, "shares": 0,
+             "reactions_love": 0, "reactions_haha": 0, "reactions_wow": 0,
+             "reactions_sad": 0, "reactions_angry": 0, "created_time": ""}
     if not PAGE_TOKEN or not post_id:
-        return {"likes": 0, "comments": 0, "shares": 0}
+        return _zero
 
     ids_to_try = [post_id]
-    # If stored ID has no underscore, it's a photo ID — also try post format
     if "_" not in str(post_id) and PAGE_ID:
         ids_to_try.append(f"{PAGE_ID}_{post_id}")
 
@@ -73,7 +75,15 @@ def get_post_insights(post_id: str) -> dict:
                 f"{GRAPH_URL}/{fb_id}",
                 params={
                     "access_token": PAGE_TOKEN,
-                    "fields": "likes.summary(true),comments.summary(true),shares",
+                    "fields": (
+                        "likes.summary(true),comments.summary(true),shares,"
+                        "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
+                        "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),"
+                        "reactions.type(WOW).limit(0).summary(true).as(reactions_wow),"
+                        "reactions.type(SAD).limit(0).summary(true).as(reactions_sad),"
+                        "reactions.type(ANGRY).limit(0).summary(true).as(reactions_angry),"
+                        "created_time"
+                    ),
                 },
                 timeout=15,
             )
@@ -83,13 +93,19 @@ def get_post_insights(post_id: str) -> dict:
                 "likes": data.get("likes", {}).get("summary", {}).get("total_count", 0),
                 "comments": data.get("comments", {}).get("summary", {}).get("total_count", 0),
                 "shares": data.get("shares", {}).get("count", 0),
+                "reactions_love": data.get("reactions_love", {}).get("summary", {}).get("total_count", 0),
+                "reactions_haha": data.get("reactions_haha", {}).get("summary", {}).get("total_count", 0),
+                "reactions_wow": data.get("reactions_wow", {}).get("summary", {}).get("total_count", 0),
+                "reactions_sad": data.get("reactions_sad", {}).get("summary", {}).get("total_count", 0),
+                "reactions_angry": data.get("reactions_angry", {}).get("summary", {}).get("total_count", 0),
+                "created_time": data.get("created_time", ""),
             }
             if result["likes"] or result["comments"] or result["shares"]:
                 return result
         except Exception as e:
             print(f"[FB] Post insights error ({fb_id}): {e}")
 
-    return {"likes": 0, "comments": 0, "shares": 0}
+    return _zero
 
 
 def get_page_stats() -> dict:
@@ -142,3 +158,96 @@ def get_page_insights() -> dict:
     except Exception as e:
         print(f"[FB] Page insights error: {e}")
         return {}
+
+
+def get_post_reach(post_id: str) -> dict:
+    """Get reach and clicks for a post (requires read_insights permission)."""
+    if not PAGE_TOKEN or not post_id:
+        return {"post_reach": 0, "clicks": 0}
+
+    ids_to_try = [post_id]
+    if "_" not in str(post_id) and PAGE_ID:
+        ids_to_try.append(f"{PAGE_ID}_{post_id}")
+
+    for fb_id in ids_to_try:
+        try:
+            resp = requests.get(
+                f"{GRAPH_URL}/{fb_id}/insights",
+                params={
+                    "access_token": PAGE_TOKEN,
+                    "metric": "post_impressions_unique,post_clicks",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            result = {"post_reach": 0, "clicks": 0}
+            for item in resp.json().get("data", []):
+                name = item.get("name", "")
+                values = item.get("values", [])
+                if values:
+                    val = values[-1].get("value", 0)
+                    if name == "post_impressions_unique":
+                        result["post_reach"] = val
+                    elif name == "post_clicks":
+                        result["clicks"] = val if isinstance(val, int) else 0
+            if result["post_reach"] or result["clicks"]:
+                return result
+        except Exception as e:
+            print(f"[FB] Post reach error ({fb_id}): {e}")
+
+    return {"post_reach": 0, "clicks": 0}
+
+
+def get_page_growth() -> dict:
+    """Get page fan adds/removes for the last 7 days (requires read_insights)."""
+    if not PAGE_ID or not PAGE_TOKEN:
+        return {"fan_adds": 0, "fan_removes": 0}
+    try:
+        resp = requests.get(
+            f"{GRAPH_URL}/{PAGE_ID}/insights",
+            params={
+                "access_token": PAGE_TOKEN,
+                "metric": "page_fan_adds,page_fan_removes",
+                "period": "day",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        result = {"fan_adds": 0, "fan_removes": 0}
+        for item in resp.json().get("data", []):
+            name = item.get("name", "")
+            values = item.get("values", [])
+            total = sum(v.get("value", 0) for v in values)
+            if name == "page_fan_adds":
+                result["fan_adds"] = total
+            elif name == "page_fan_removes":
+                result["fan_removes"] = total
+        return result
+    except Exception as e:
+        print(f"[FB] Page growth error: {e}")
+        return {"fan_adds": 0, "fan_removes": 0}
+
+
+def get_page_views() -> dict:
+    """Get page views total for the latest day (requires read_insights)."""
+    if not PAGE_ID or not PAGE_TOKEN:
+        return {"page_views": 0}
+    try:
+        resp = requests.get(
+            f"{GRAPH_URL}/{PAGE_ID}/insights",
+            params={
+                "access_token": PAGE_TOKEN,
+                "metric": "page_views_total",
+                "period": "day",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        for item in resp.json().get("data", []):
+            values = item.get("values", [])
+            if values:
+                return {"page_views": values[-1].get("value", 0)}
+        return {"page_views": 0}
+    except Exception as e:
+        print(f"[FB] Page views error: {e}")
+        return {"page_views": 0}

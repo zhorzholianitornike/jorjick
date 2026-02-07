@@ -35,8 +35,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from card_generator import CardGenerator, generate_auto_card
-from facebook import post_photo, post_photo_ext, get_post_insights, get_page_stats, get_page_insights
-from activity_log import log_activity, update_activity, get_logs, get_summary, get_top, get_today_detail
+from facebook import post_photo, post_photo_ext, get_post_insights, get_page_stats, get_page_insights, get_post_reach, get_page_growth, get_page_views
+from activity_log import log_activity, update_activity, get_logs, get_summary, get_top, get_today_detail, get_weekly_summary
 from setup_fonts import download as ensure_font
 
 # ---------------------------------------------------------------------------
@@ -342,6 +342,21 @@ DASHBOARD = """<!DOCTYPE html>
   .fb-top-title { color:#cbd5e1; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:12px; }
   .fb-top-eng { display:flex; gap:10px; color:#94a3b8; font-size:11px; white-space:nowrap; }
   .fb-top-eng span { color:#1877f2; font-weight:600; }
+  .fb-reactions { display:flex; gap:12px; flex-wrap:wrap; margin:10px 0; }
+  .fb-rx { background:#151620; border:1px solid #2d3148; border-radius:20px; padding:6px 14px; font-size:12px; color:#e2e8f0; }
+  .fb-rx .rx-n { font-weight:700; color:#1877f2; margin-left:4px; }
+  .fb-growth { display:inline-block; font-size:12px; font-weight:600; margin-left:6px; }
+  .fb-growth.pos { color:#4ade80; }
+  .fb-growth.neg { color:#f87171; }
+  .fb-insight-row { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+  .fb-insight-card { background:#151620; border:1px solid #2d3148; border-radius:8px; padding:10px 14px; flex:1; min-width:120px; }
+  .fb-insight-card .fic-v { font-size:18px; font-weight:700; color:#e2e8f0; }
+  .fb-insight-card .fic-l { font-size:10px; color:#64748b; margin-top:2px; }
+  .fb-src-perf { margin:10px 0; }
+  .fb-src-row { display:flex; justify-content:space-between; padding:6px 10px; border-bottom:1px solid #1a1c2e; font-size:12px; }
+  .fb-src-row:hover { background:#151620; }
+  .fb-src-name { color:#cbd5e1; }
+  .fb-src-val { color:#1877f2; font-weight:600; }
 </style>
 </head>
 <body>
@@ -586,11 +601,28 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="fb-section">
       <h3>📘 Facebook Insights</h3>
       <div class="fb-stats">
-        <div class="fb-stat"><div class="fv" id="fb-followers">—</div><div class="fl">მიმდევრები</div></div>
+        <div class="fb-stat"><div class="fv" id="fb-followers">—</div><div class="fl">მიმდევრები <span class="fb-growth" id="fb-growth-badge"></span></div></div>
         <div class="fb-stat"><div class="fv" id="fb-fans">—</div><div class="fl">ფანები</div></div>
         <div class="fb-stat"><div class="fv" id="fb-impressions">—</div><div class="fl">შთაბეჭდილებები</div></div>
         <div class="fb-stat"><div class="fv" id="fb-engagements">—</div><div class="fl">ჩართულობა</div></div>
       </div>
+      <div class="fb-insight-row">
+        <div class="fb-insight-card"><div class="fic-v" id="fb-eng-rate">—</div><div class="fic-l">Engagement Rate</div></div>
+        <div class="fb-insight-card"><div class="fic-v" id="fb-page-views">—</div><div class="fic-l">გვერდის ნახვები</div></div>
+        <div class="fb-insight-card"><div class="fic-v" id="fb-avg-eng">—</div><div class="fic-l">საშ. ჩართულობა</div></div>
+        <div class="fb-insight-card"><div class="fic-v" id="fb-week-reach">—</div><div class="fic-l">კვირის Reach</div></div>
+      </div>
+      <p style="color:#94a3b8;font-size:11px;margin-bottom:4px;">რეაქციები (კვირა):</p>
+      <div class="fb-reactions" id="fb-reactions-row">
+        <div class="fb-rx">❤️ <span class="rx-n" id="fb-rx-love">0</span></div>
+        <div class="fb-rx">😂 <span class="rx-n" id="fb-rx-haha">0</span></div>
+        <div class="fb-rx">😮 <span class="rx-n" id="fb-rx-wow">0</span></div>
+        <div class="fb-rx">😢 <span class="rx-n" id="fb-rx-sad">0</span></div>
+        <div class="fb-rx">😠 <span class="rx-n" id="fb-rx-angry">0</span></div>
+      </div>
+      <p style="color:#94a3b8;font-size:11px;margin-bottom:4px;" id="fb-best-hour-label">🎯 საუკეთესო დრო: —</p>
+      <p style="color:#94a3b8;font-size:11px;margin-bottom:8px;">📈 წყაროების ეფექტურობა:</p>
+      <div class="fb-src-perf" id="fb-src-perf"></div>
       <button class="btn" data-action="fb-refresh" style="margin-bottom:12px;font-size:12px;padding:8px 16px;">🔄 Engagement განახლება</button>
       <div class="spin" id="spin-fb" style="display:none;"></div>
       <div id="fb-refresh-msg" style="font-size:12px;color:#4ade80;display:none;margin-bottom:10px;"></div>
@@ -1563,7 +1595,47 @@ DASHBOARD = """<!DOCTYPE html>
       var eng = d.page_post_engagements || 0;
       document.getElementById('fb-impressions').textContent = imp.toLocaleString();
       document.getElementById('fb-engagements').textContent = eng.toLocaleString();
+      // Growth badge
+      var net = (d.fan_adds || 0) - (d.fan_removes || 0);
+      var badge = document.getElementById('fb-growth-badge');
+      if (net !== 0) {
+        badge.textContent = (net > 0 ? '+' : '') + net;
+        badge.className = 'fb-growth ' + (net >= 0 ? 'pos' : 'neg');
+      }
+      // Page views
+      if (d.page_views) document.getElementById('fb-page-views').textContent = d.page_views.toLocaleString();
     } catch(e) { console.log('FB stats error:', e); }
+    // Computed analytics
+    try {
+      var r3 = await fetch('/api/fb/computed-analytics');
+      var c = await r3.json();
+      if (!c.error) {
+        document.getElementById('fb-eng-rate').textContent = (c.engagement_rate || 0).toFixed(1) + '%';
+        document.getElementById('fb-avg-eng').textContent = (c.avg_engagement || 0).toFixed(1);
+        document.getElementById('fb-week-reach').textContent = (c.week_reach || 0).toLocaleString();
+        // Reactions
+        var rx = c.reactions || {};
+        document.getElementById('fb-rx-love').textContent = rx.love || 0;
+        document.getElementById('fb-rx-haha').textContent = rx.haha || 0;
+        document.getElementById('fb-rx-wow').textContent = rx.wow || 0;
+        document.getElementById('fb-rx-sad').textContent = rx.sad || 0;
+        document.getElementById('fb-rx-angry').textContent = rx.angry || 0;
+        // Best hour
+        if (c.best_hour && c.best_hour !== '—') {
+          document.getElementById('fb-best-hour-label').textContent = '🎯 საუკეთესო დრო: ' + c.best_hour + ':00';
+        }
+        // Source performance
+        var sp = c.source_performance || {};
+        var spDiv = document.getElementById('fb-src-perf');
+        spDiv.innerHTML = '';
+        Object.keys(sp).forEach(function(src) {
+          var info = sp[src];
+          spDiv.innerHTML += '<div class="fb-src-row"><span class="fb-src-name">' + esc(src) + ' (' + (info.count||0) + ' პოსტი)</span><span class="fb-src-val">საშ. ' + (info.avg_engagement||0).toFixed(1) + '</span></div>';
+        });
+        if (!Object.keys(sp).length) spDiv.innerHTML = '<div style="color:#64748b;font-size:11px;padding:4px;">მონაცემები არ არის</div>';
+      }
+    } catch(e) { console.log('FB analytics error:', e); }
+    // Top posts
     try {
       var r2 = await fetch('/api/fb/top-engaged?limit=5');
       var d2 = await r2.json();
@@ -1571,7 +1643,14 @@ DASHBOARD = """<!DOCTYPE html>
       list.innerHTML = '';
       (d2.posts || []).forEach(function(p) {
         var likes = parseInt(p.likes||0), cmts = parseInt(p.comments||0), shares = parseInt(p.shares||0);
-        list.innerHTML += '<div class="fb-top-item"><div class="fb-top-title">' + esc((p.title||'').slice(0,50)) + '</div><div class="fb-top-eng">👍 <span>' + likes + '</span> 💬 <span>' + cmts + '</span> 🔄 <span>' + shares + '</span></div></div>';
+        var rxBadge = '';
+        if (p.reactions) {
+          var rr = p.reactions;
+          if (rr.love) rxBadge += ' ❤️' + rr.love;
+          if (rr.haha) rxBadge += ' 😂' + rr.haha;
+          if (rr.wow) rxBadge += ' 😮' + rr.wow;
+        }
+        list.innerHTML += '<div class="fb-top-item"><div class="fb-top-title">' + esc((p.title||'').slice(0,50)) + '</div><div class="fb-top-eng">👍 <span>' + likes + '</span> 💬 <span>' + cmts + '</span> 🔄 <span>' + shares + '</span>' + rxBadge + '</div></div>';
       });
       if (!(d2.posts || []).length) list.innerHTML = '<div style="color:#64748b;font-size:12px;padding:8px;">ჯერ არ არის გამოქვეყნებული პოსტები</div>';
     } catch(e) { console.log('FB top error:', e); }
@@ -2190,7 +2269,11 @@ async def api_test_hourly_report():
             fb_stats = _fb_page_cache if _fb_page_cache else await asyncio.to_thread(get_page_stats)
             if fb_stats.get("followers"):
                 fb_section = f"📘 Facebook გვერდი:\n"
-                fb_section += f"  👥 მიმდევრები: {fb_stats.get('followers', 0):,}\n"
+                net = fb_stats.get("fan_adds", 0) - fb_stats.get("fan_removes", 0)
+                sign = "+" if net >= 0 else ""
+                fb_section += f"  👥 მიმდევრები: {fb_stats.get('followers', 0):,} ({sign}{net})\n"
+                if fb_stats.get("page_views"):
+                    fb_section += f"  👀 გვერდის ნახვები: {fb_stats['page_views']:,}\n"
                 top_posts = get_top(1)
                 if top_posts:
                     tp = top_posts[0]
@@ -2211,22 +2294,35 @@ async def api_test_hourly_report():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/api/test-weekly-report")
+async def api_test_weekly_report():
+    """Send a test weekly report to Telegram."""
+    try:
+        report = _build_weekly_report()
+        await asyncio.to_thread(_send_telegram, report)
+        return {"ok": True, "message": "Weekly report sent to Telegram"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 _fb_page_cache = {}  # cached page stats
 
 
 @app.get("/api/fb/page-stats")
 async def api_fb_page_stats():
-    """Facebook page stats: followers, fans, name."""
+    """Facebook page stats: followers, fans, name, growth, views."""
     global _fb_page_cache
     stats = await asyncio.to_thread(get_page_stats)
     insights = await asyncio.to_thread(get_page_insights)
-    _fb_page_cache = {**stats, **insights}
+    growth = await asyncio.to_thread(get_page_growth)
+    views = await asyncio.to_thread(get_page_views)
+    _fb_page_cache = {**stats, **insights, **growth, **views}
     return _fb_page_cache
 
 
 @app.get("/api/fb/refresh-engagement")
 async def api_fb_refresh_engagement():
-    """Refresh engagement metrics for all published posts."""
+    """Refresh engagement metrics (incl. reactions, reach) for all published posts."""
     posts = get_top(20)
     updated = 0
     for post in posts:
@@ -2234,20 +2330,53 @@ async def api_fb_refresh_engagement():
         if not fb_id:
             continue
         metrics = await asyncio.to_thread(get_post_insights, fb_id)
-        if metrics.get("likes", 0) or metrics.get("comments", 0) or metrics.get("shares", 0):
-            update_activity(post["id"], **metrics)
+        reach = await asyncio.to_thread(get_post_reach, fb_id)
+        combined = {**metrics, **reach}
+        if combined.get("likes", 0) or combined.get("comments", 0) or combined.get("shares", 0):
+            update_activity(post["id"], **combined)
             updated += 1
     return {"updated": updated, "total": len(posts)}
 
 
 @app.get("/api/fb/top-engaged")
 async def api_fb_top_engaged(limit: int = 10):
-    """Top posts sorted by engagement (likes+comments+shares)."""
+    """Top posts sorted by engagement (likes+comments+shares), with reactions."""
     posts = get_top(50)
     for p in posts:
         p["engagement"] = int(p.get("likes", 0) or 0) + int(p.get("comments", 0) or 0) + int(p.get("shares", 0) or 0)
+        p["reactions"] = {
+            "love": int(p.get("reactions_love", 0) or 0),
+            "haha": int(p.get("reactions_haha", 0) or 0),
+            "wow": int(p.get("reactions_wow", 0) or 0),
+            "sad": int(p.get("reactions_sad", 0) or 0),
+            "angry": int(p.get("reactions_angry", 0) or 0),
+        }
     posts.sort(key=lambda x: x["engagement"], reverse=True)
     return {"posts": posts[:limit]}
+
+
+@app.get("/api/fb/computed-analytics")
+async def api_fb_computed_analytics():
+    """Computed analytics: engagement rate, best hour, source performance, reactions."""
+    try:
+        summary = await asyncio.to_thread(get_weekly_summary)
+        return {
+            "total_posts": summary.get("total_posts", 0),
+            "likes": summary.get("likes", 0),
+            "comments": summary.get("comments", 0),
+            "shares": summary.get("shares", 0),
+            "engagement_rate": summary.get("engagement_rate", 0),
+            "avg_engagement": summary.get("avg_engagement", 0),
+            "best_hour": summary.get("best_hour", "—"),
+            "week_reach": summary.get("week_reach", 0),
+            "reactions": summary.get("reactions", {}),
+            "source_performance": summary.get("source_performance", {}),
+            "top_posts": summary.get("top_posts", [])[:5],
+            "by_source": summary.get("by_source", {}),
+        }
+    except Exception as e:
+        print(f"[FB] Computed analytics error: {e}")
+        return {"error": str(e)}
 
 
 @app.post("/api/auto-generate")
@@ -3479,6 +3608,7 @@ async def on_startup():
     asyncio.create_task(_rss_checker_loop())         # RSS feed checker
     asyncio.create_task(_rss_queue_sender_loop())    # RSS queue sender
     asyncio.create_task(_fb_insights_loop())           # FB engagement refresh
+    asyncio.create_task(_weekly_report_loop())          # weekly summary (Monday 10:00)
 
 
 # ---------------------------------------------------------------------------
@@ -3539,7 +3669,11 @@ async def _hourly_status_report():
                 fb_stats = _fb_page_cache if _fb_page_cache else await asyncio.to_thread(get_page_stats)
                 if fb_stats.get("followers"):
                     fb_section = f"📘 Facebook გვერდი:\n"
-                    fb_section += f"  👥 მიმდევრები: {fb_stats.get('followers', 0):,}\n"
+                    net = fb_stats.get("fan_adds", 0) - fb_stats.get("fan_removes", 0)
+                    sign = "+" if net >= 0 else ""
+                    fb_section += f"  👥 მიმდევრები: {fb_stats.get('followers', 0):,} ({sign}{net})\n"
+                    if fb_stats.get("page_views"):
+                        fb_section += f"  👀 გვერდის ნახვები: {fb_stats['page_views']:,}\n"
                     # Find top post
                     top_posts = get_top(1)
                     if top_posts:
@@ -3569,20 +3703,23 @@ async def _hourly_status_report():
 # Facebook insights loop — refresh engagement every hour
 # ---------------------------------------------------------------------------
 async def _fb_insights_loop():
-    """Every hour: refresh page stats + engagement for recent published posts."""
+    """Every hour: refresh page stats + growth + views + engagement for recent posts."""
     global _fb_page_cache
     await asyncio.sleep(120)  # wait 2 min on startup
     print("[FB-Insights] Background loop started (every 1h)")
 
     while True:
         try:
-            # 1. Page stats
+            # 1. Page stats + growth + views
             stats = await asyncio.to_thread(get_page_stats)
             insights = await asyncio.to_thread(get_page_insights)
-            _fb_page_cache = {**stats, **insights}
-            print(f"[FB-Insights] Page stats: followers={stats.get('followers', 0)}")
+            growth = await asyncio.to_thread(get_page_growth)
+            views = await asyncio.to_thread(get_page_views)
+            _fb_page_cache = {**stats, **insights, **growth, **views}
+            print(f"[FB-Insights] Page stats: followers={stats.get('followers', 0)}, "
+                  f"fan_adds={growth.get('fan_adds', 0)}, views={views.get('page_views', 0)}")
 
-            # 2. Refresh engagement for last 20 published posts
+            # 2. Refresh engagement + reach for last 20 published posts
             posts = get_top(20)
             updated = 0
             for post in posts:
@@ -3590,8 +3727,10 @@ async def _fb_insights_loop():
                 if not fb_id:
                     continue
                 metrics = await asyncio.to_thread(get_post_insights, fb_id)
-                if metrics.get("likes", 0) or metrics.get("comments", 0) or metrics.get("shares", 0):
-                    update_activity(post["id"], **metrics)
+                reach = await asyncio.to_thread(get_post_reach, fb_id)
+                combined = {**metrics, **reach}
+                if combined.get("likes", 0) or combined.get("comments", 0) or combined.get("shares", 0):
+                    update_activity(post["id"], **combined)
                     updated += 1
             print(f"[FB-Insights] Updated engagement for {updated}/{len(posts)} posts")
 
@@ -3599,6 +3738,122 @@ async def _fb_insights_loop():
             print(f"[FB-Insights] Loop error: {exc}")
 
         await asyncio.sleep(3600)  # 1 hour
+
+
+# ---------------------------------------------------------------------------
+# Weekly report — every Monday 10:00 Tbilisi time
+# ---------------------------------------------------------------------------
+def _build_weekly_report() -> str:
+    """Build a comprehensive weekly summary report in Georgian."""
+    now = datetime.now(TBILISI)
+    week_end = now
+    week_start = now - timedelta(days=7)
+
+    summary = get_weekly_summary()
+
+    # Source breakdown
+    src_lines = ""
+    for src, cnt in summary.get("by_source", {}).items():
+        src_lines += f"  · {src}: {cnt}"
+    if not src_lines:
+        src_lines = "  · —"
+
+    # Top posts
+    top_lines = ""
+    for i, tp in enumerate(summary.get("top_posts", [])[:3], 1):
+        title = (tp.get("title", "") or "")[:35]
+        eng = tp.get("engagement", 0)
+        likes = tp.get("likes", 0)
+        cmts = tp.get("comments", 0)
+        shares = tp.get("shares", 0)
+        top_lines += f"  {i}. \"{title}\" — 👍{likes} 💬{cmts} 🔄{shares}\n"
+    if not top_lines:
+        top_lines = "  —\n"
+
+    # Reactions
+    rx = summary.get("reactions", {})
+    rx_line = (f"  ❤️ {rx.get('love', 0)} · 😂 {rx.get('haha', 0)} · "
+               f"😮 {rx.get('wow', 0)} · 😢 {rx.get('sad', 0)} · 😠 {rx.get('angry', 0)}")
+
+    # Source performance
+    src_perf_lines = ""
+    for src, data in summary.get("source_performance", {}).items():
+        avg = data.get("avg_engagement", 0)
+        cnt = data.get("count", 0)
+        src_perf_lines += f"  · {src}: {cnt} პოსტი, საშ. ჩართ. {avg:.1f}\n"
+
+    # Page stats
+    fb = _fb_page_cache or {}
+    followers = fb.get("followers", 0)
+    fan_adds = fb.get("fan_adds", 0)
+    fan_removes = fb.get("fan_removes", 0)
+    net_change = fan_adds - fan_removes
+    change_sign = "+" if net_change >= 0 else ""
+
+    report = (
+        f"📊 კვირის შეჯამება — {week_start.strftime('%d/%m')} – {week_end.strftime('%d/%m/%Y')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📰 გამოქვეყნებული პოსტები: {summary.get('total_posts', 0)}\n"
+        f"{src_lines}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 ჩართულობა:\n"
+        f"  👍 ლაიქები: {summary.get('likes', 0)} / 💬 კომენტარები: {summary.get('comments', 0)} / 🔄 გაზიარებები: {summary.get('shares', 0)}\n"
+        f"  📈 Engagement Rate: {summary.get('engagement_rate', 0):.1f}%\n"
+        f"  📊 საშუალო ჩართულობა: {summary.get('avg_engagement', 0):.1f}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💫 რეაქციები:\n"
+        f"{rx_line}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏆 ტოპ 3 პოსტი:\n"
+        f"{top_lines}"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📘 Facebook გვერდი:\n"
+        f"  👥 მიმდევრები: {followers:,} ({change_sign}{net_change})\n"
+        f"  📊 Reach: {summary.get('week_reach', 0):,}\n"
+        f"  🎯 საუკეთესო დრო: {summary.get('best_hour', '—')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    )
+
+    if src_perf_lines:
+        report += (
+            f"📈 წყაროების ეფექტურობა:\n"
+            f"{src_perf_lines}"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        )
+
+    report += f"🤖 კვირის რეპორტი — აგენტი აქტიურია!"
+
+    return report
+
+
+async def _weekly_report_loop():
+    """Send weekly summary every Monday at 10:00 Tbilisi time."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        print("[Weekly] No TELEGRAM_BOT_TOKEN or ADMIN_ID — weekly reports disabled")
+        return
+
+    print("[Weekly] Weekly report loop started (Monday 10:00 Tbilisi)")
+
+    while True:
+        try:
+            now = datetime.now(TBILISI)
+            # Calculate seconds until next Monday 10:00
+            days_until_monday = (7 - now.weekday()) % 7
+            if days_until_monday == 0 and (now.hour > 10 or (now.hour == 10 and now.minute > 0)):
+                days_until_monday = 7
+            next_monday = now.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+            wait_seconds = (next_monday - now).total_seconds()
+            print(f"[Weekly] Next report in {wait_seconds / 3600:.1f}h ({next_monday.strftime('%d/%m %H:%M')})")
+            await asyncio.sleep(wait_seconds)
+
+            # Build and send report
+            report = _build_weekly_report()
+            await asyncio.to_thread(_send_telegram, report)
+            print(f"[Weekly] Weekly report sent at {datetime.now(TBILISI).strftime('%H:%M %d/%m')}")
+
+        except Exception as exc:
+            print(f"[Weekly] Report error: {exc}")
+            await asyncio.sleep(3600)  # retry in 1h on error
 
 
 # ---------------------------------------------------------------------------
