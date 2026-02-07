@@ -1107,19 +1107,28 @@ DASHBOARD = """<!DOCTYPE html>
       d.sources.forEach(s => {
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid #1a1d2e';
+        const sid = s.id;
+        const bg = s.enabled ? '#1a5c2e' : '#5c1a1a';
+        const label = s.enabled ? '✅ ჩართული' : '❌ გამორთული';
         tr.innerHTML =
           '<td style="padding:8px;color:#e2e8f0;">' + s.name + '</td>' +
           '<td style="padding:8px;color:#94a3b8;">' + s.category + '</td>' +
           '<td style="padding:8px;color:#94a3b8;">' + s.interval_min + ' წთ</td>' +
           '<td style="padding:8px;">' +
-            '<button onclick="toggleRss(\'' + s.id + '\')" style="background:' +
-            (s.enabled ? '#1a5c2e' : '#5c1a1a') +
+            '<button data-action="toggle" data-id="' + sid + '" style="background:' + bg +
             ';border:none;color:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">' +
-            (s.enabled ? '✅ ჩართული' : '❌ გამორთული') + '</button>' +
-          '</td>' +
+            label + '</button></td>' +
           '<td style="padding:8px;">' +
-            '<button onclick="deleteRss(\'' + s.id + '\')" style="background:none;border:1px solid #5c1a1a;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">✕</button>' +
+            '<button data-action="delete" data-id="' + sid + '" style="background:none;border:1px solid #5c1a1a;color:#ef4444;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">✕</button>' +
           '</td>';
+        tr.addEventListener('click', function(e) {
+          const btn = e.target.closest('[data-action]');
+          if (!btn) return;
+          const action = btn.dataset.action;
+          const id = btn.dataset.id;
+          if (action === 'toggle') toggleRss(id);
+          else if (action === 'delete') deleteRss(id);
+        });
         tbody.appendChild(tr);
       });
       document.getElementById('rss-min-interval').value = d.min_interval;
