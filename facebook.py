@@ -41,8 +41,11 @@ def post_photo_ext(image_path: str, caption: str = "") -> dict:
                 timeout=30,
             )
         resp.raise_for_status()
-        post_id = resp.json().get("id")
-        print(f"[FB] Posted — id: {post_id}")
+        data = resp.json()
+        # Prefer post_id (feed post) over id (photo object) for engagement tracking
+        post_id = data.get("post_id") or data.get("id")
+        photo_id = data.get("id")
+        print(f"[FB] Posted — post_id: {post_id}, photo_id: {photo_id}")
         return {"success": True, "post_id": post_id}
 
     except Exception as exc:
@@ -51,28 +54,42 @@ def post_photo_ext(image_path: str, caption: str = "") -> dict:
 
 
 def get_post_insights(post_id: str) -> dict:
-    """Get engagement metrics for a single post."""
+    """Get engagement metrics for a post or photo.
+
+    Tries post_id first. If it looks like a bare photo ID (no underscore),
+    also tries PAGE_ID_PHOTO_ID format as fallback.
+    """
     if not PAGE_TOKEN or not post_id:
         return {"likes": 0, "comments": 0, "shares": 0}
-    try:
-        resp = requests.get(
-            f"{GRAPH_URL}/{post_id}",
-            params={
-                "access_token": PAGE_TOKEN,
-                "fields": "likes.summary(true),comments.summary(true),shares",
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return {
-            "likes": data.get("likes", {}).get("summary", {}).get("total_count", 0),
-            "comments": data.get("comments", {}).get("summary", {}).get("total_count", 0),
-            "shares": data.get("shares", {}).get("count", 0),
-        }
-    except Exception as e:
-        print(f"[FB] Post insights error ({post_id}): {e}")
-        return {"likes": 0, "comments": 0, "shares": 0}
+
+    ids_to_try = [post_id]
+    # If stored ID has no underscore, it's a photo ID — also try post format
+    if "_" not in str(post_id) and PAGE_ID:
+        ids_to_try.append(f"{PAGE_ID}_{post_id}")
+
+    for fb_id in ids_to_try:
+        try:
+            resp = requests.get(
+                f"{GRAPH_URL}/{fb_id}",
+                params={
+                    "access_token": PAGE_TOKEN,
+                    "fields": "likes.summary(true),comments.summary(true),shares",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            result = {
+                "likes": data.get("likes", {}).get("summary", {}).get("total_count", 0),
+                "comments": data.get("comments", {}).get("summary", {}).get("total_count", 0),
+                "shares": data.get("shares", {}).get("count", 0),
+            }
+            if result["likes"] or result["comments"] or result["shares"]:
+                return result
+        except Exception as e:
+            print(f"[FB] Post insights error ({fb_id}): {e}")
+
+    return {"likes": 0, "comments": 0, "shares": 0}
 
 
 def get_page_stats() -> dict:
