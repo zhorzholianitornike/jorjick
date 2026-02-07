@@ -130,7 +130,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .red-square {{
     width: 28px;
     height: 28px;
-    background-color: #1e94b9;
+    background-color: #0c277d;
     margin-right: 24px;
     flex-shrink: 0;
     margin-top: 5px;
@@ -173,7 +173,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .bottom-branding-bar {{
     height: 28px;
     width: 100%;
-    background-color: #1e94b9;
+    background-color: #0c277d;
     z-index: 10;
     margin-top: 36px;
   }}
@@ -199,7 +199,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <svg class="custom-line-svg" viewBox="0 0 400 22" preserveAspectRatio="none">
         <polyline points="0,20 370,20 400,2"
                   fill="none"
-                  stroke="#1e94b9"
+                  stroke="#0c277d"
                   stroke-width="2.5"
                   stroke-linejoin="round"
                   vector-effect="non-scaling-stroke" />
@@ -402,7 +402,7 @@ def generate_auto_card(
 
     # Constants
     W, H = 1080, 1350
-    ACCENT_BLUE = (30, 148, 185)
+    ACCENT_BLUE = (12, 39, 125)
     WHITE = (255, 255, 255)
 
     # Load and resize photo to cover
