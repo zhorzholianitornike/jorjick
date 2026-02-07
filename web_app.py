@@ -519,7 +519,7 @@ DASHBOARD = """<!DOCTYPE html>
           <div style="display:flex;gap:8px;align-items:center;">
             <input type="number" id="rss-min-interval" value="30" min="5" max="1440"
               style="width:80px;background:#151620;border:1px solid #2d3148;border-radius:7px;padding:9px 12px;color:#e2e8f0;font-size:16px;text-align:center;">
-            <button class="btn" onclick="setRssMinInterval()" style="padding:8px 16px;">შეცვლა</button>
+            <button class="btn" onclick="setRssMinInterval()" style="padding:8px 16px;margin-top:0;width:auto;">შეცვლა</button>
             <span style="color:#64748b;font-size:12px;" id="rss-queue-info">რიგში: 0</span>
           </div>
         </div>
@@ -1042,6 +1042,12 @@ DASHBOARD = """<!DOCTYPE html>
     updateIntervalLabel(parseInt(this.value) || 15);
   });
 
+  // helper: show result div with content
+  function showResult(el, html) {
+    el.innerHTML = html;
+    el.style.display = 'block';
+  }
+
   window.applyNewsInterval = async function() {
     const min = parseInt(document.getElementById('inp-news-interval').value) || 15;
     const res = document.getElementById('res-news');
@@ -1053,13 +1059,13 @@ DASHBOARD = """<!DOCTYPE html>
       });
       const d = await r.json();
       if (d.success) {
-        res.innerHTML = '<span style="color:#4ade80">✅ ინტერვალი შეიცვალა: ყოველ ' + d.minutes + ' წუთში</span>';
+        showResult(res, '<span style="color:#4ade80">✅ ინტერვალი შეიცვალა: ყოველ ' + d.minutes + ' წუთში</span>');
         toast('ინტერვალი: ' + d.minutes + ' წუთი', 'success');
       } else {
-        res.innerHTML = '<span style="color:#ef4444">შეცდომა</span>';
+        showResult(res, '<span style="color:#ef4444">შეცდომა</span>');
       }
     } catch(e) {
-      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+      showResult(res, '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>');
     }
   };
 
@@ -1067,20 +1073,20 @@ DASHBOARD = """<!DOCTYPE html>
     const spin = document.getElementById('spin-news');
     const res = document.getElementById('res-news');
     spin.style.display = 'block';
-    res.innerHTML = '';
+    res.style.display = 'none';
     try {
       const r = await fetch('/api/test-news', {method:'POST'});
       const d = await r.json();
       spin.style.display = 'none';
       if (d.success) {
-        res.innerHTML = '<span style="color:#4ade80">📰 გაგზავნილია: ' + d.title.substring(0,60) + '...</span>';
+        showResult(res, '<span style="color:#4ade80">📰 გაგზავნილია: ' + d.title.substring(0,60) + '...</span>');
         toast('სიახლე გაგზავნილია Telegram-ზე!', 'success');
       } else {
-        res.innerHTML = '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>';
+        showResult(res, '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>');
       }
     } catch(e) {
       spin.style.display = 'none';
-      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+      showResult(res, '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>');
     }
   };
 
@@ -1152,32 +1158,40 @@ DASHBOARD = """<!DOCTYPE html>
 
   window.setRssMinInterval = async function() {
     const min = parseInt(document.getElementById('rss-min-interval').value) || 30;
-    const r = await fetch('/api/rss-settings', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({min_interval: min})
-    });
-    const d = await r.json();
-    if (d.success) toast('მინ. ინტერვალი: ' + d.min_interval + ' წუთი', 'success');
+    const res = document.getElementById('res-rss');
+    try {
+      const r = await fetch('/api/rss-settings', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({min_interval: min})
+      });
+      const d = await r.json();
+      if (d.success) {
+        showResult(res, '<span style="color:#4ade80">✅ მინ. ინტერვალი: ' + d.min_interval + ' წუთი</span>');
+        toast('მინ. ინტერვალი: ' + d.min_interval + ' წუთი', 'success');
+      }
+    } catch(e) {
+      showResult(res, '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>');
+    }
   };
 
   window.sendTestRss = async function() {
     const spin = document.getElementById('spin-rss');
     const res = document.getElementById('res-rss');
     spin.style.display = 'block';
-    res.innerHTML = '';
+    res.style.display = 'none';
     try {
       const r = await fetch('/api/test-rss', {method:'POST'});
       const d = await r.json();
       spin.style.display = 'none';
       if (d.success) {
-        res.innerHTML = '<span style="color:#4ade80">📡 ' + d.source + ': ' + d.title.substring(0,60) + '...</span>';
+        showResult(res, '<span style="color:#4ade80">📡 ' + d.source + ': ' + d.title.substring(0,60) + '...</span>');
         toast('RSS სიახლე გაგზავნილია Telegram-ზე!', 'success');
       } else {
-        res.innerHTML = '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>';
+        showResult(res, '<span style="color:#ef4444">' + (d.error || 'შეცდომა') + '</span>');
       }
     } catch(e) {
       spin.style.display = 'none';
-      res.innerHTML = '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>';
+      showResult(res, '<span style="color:#ef4444">შეცდომა: ' + e.message + '</span>');
     }
   };
 
