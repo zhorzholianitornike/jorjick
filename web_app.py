@@ -2305,6 +2305,34 @@ async def api_test_weekly_report():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/api/debug/fb-post/{post_id}")
+async def api_debug_fb_post(post_id: str):
+    """Debug: show raw Graph API response for a post."""
+    from facebook import GRAPH_URL, PAGE_TOKEN, PAGE_ID
+    if not PAGE_TOKEN:
+        return {"error": "No FB_PAGE_TOKEN"}
+    try:
+        resp = requests.get(
+            f"{GRAPH_URL}/{post_id}",
+            params={
+                "access_token": PAGE_TOKEN,
+                "fields": (
+                    "likes.summary(true),comments.summary(true),shares,"
+                    "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
+                    "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),"
+                    "reactions.type(WOW).limit(0).summary(true).as(reactions_wow),"
+                    "reactions.type(SAD).limit(0).summary(true).as(reactions_sad),"
+                    "reactions.type(ANGRY).limit(0).summary(true).as(reactions_angry),"
+                    "created_time"
+                ),
+            },
+            timeout=15,
+        )
+        return {"status": resp.status_code, "raw": resp.json(), "post_id_used": post_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 _fb_page_cache = {}  # cached page stats
 
 
