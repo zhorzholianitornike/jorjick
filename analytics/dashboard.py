@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Analytics dashboard — professional dark-themed UI.
 
-Served at /analytics route. Does NOT modify existing dashboard.
+Served at /analytics route. Includes:
+- Weekly/Monthly KPI reports (6 pillars)
+- Activity log + summary stats (moved from main dashboard)
+- FB live insights + engagement (moved from main dashboard)
 """
 
 ANALYTICS_HTML = """<!DOCTYPE html>
@@ -241,7 +244,64 @@ ANALYTICS_HTML = """<!DOCTYPE html>
   /* ── Unavailable ── */
   .unavail-list { margin-top: 8px; }
   .unavail-item { font-size: 12px; color: #64748b; padding: 4px 0; }
-  .unavail-item::before { content: "·"; margin-right: 8px; color: #475569; }
+  .unavail-item::before { content: "\\00B7"; margin-right: 8px; color: #475569; }
+
+  /* ── Activity Log styles ── */
+  .a-src { display: flex; gap: 8px; flex-wrap: wrap; }
+  .a-src-tag {
+    padding: 6px 14px; background: #1a1d2e; border: 1px solid #2d3148;
+    border-radius: 20px; font-size: 12px; color: #e2e8f0;
+  }
+  .a-src-tag .cnt { font-weight: 700; color: #1877f2; margin-left: 4px; }
+  .a-filters { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .a-filters select {
+    background: #1a1d2e; border: 1px solid #2d3148; border-radius: 7px;
+    padding: 8px 12px; color: #e2e8f0; font-size: 13px; outline: none;
+  }
+  .st-badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .st-ok { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .st-no { background: rgba(248,113,113,0.15); color: #f87171; }
+  .st-wait { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+  /* ── FB Insights styles ── */
+  .fb-stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px; margin-bottom: 20px;
+  }
+  .fb-stat-card {
+    background: #1a1d2e; border-radius: 8px; padding: 16px; text-align: center;
+  }
+  .fb-stat-card .fv { font-size: 24px; font-weight: 700; color: #1877f2; }
+  .fb-stat-card .fl { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .fb-growth { display: inline-block; font-size: 12px; font-weight: 600; margin-left: 6px; }
+  .fb-growth.pos { color: #4ade80; }
+  .fb-growth.neg { color: #f87171; }
+  .fb-reactions-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+  .fb-rx {
+    background: #1a1d2e; border: 1px solid #2d3148; border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; color: #e2e8f0;
+  }
+  .fb-rx .rx-n { font-weight: 700; color: #1877f2; margin-left: 4px; }
+  .fb-src-perf { margin: 14px 0; }
+  .fb-src-row {
+    display: flex; justify-content: space-between; padding: 8px 12px;
+    border-bottom: 1px solid #1e2030; font-size: 13px;
+  }
+  .fb-src-row:hover { background: #1a1d2e; }
+  .fb-src-name { color: #e2e8f0; }
+  .fb-src-val { color: #1877f2; font-weight: 600; }
+  .fb-top-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; border-bottom: 1px solid #1e2030; font-size: 13px;
+  }
+  .fb-top-item:hover { background: #1a1d2e; }
+  .fb-top-title {
+    color: #e2e8f0; flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; margin-right: 12px;
+  }
+  .fb-top-eng { display: flex; gap: 10px; color: #94a3b8; font-size: 12px; white-space: nowrap; }
+  .fb-top-eng span { color: #1877f2; font-weight: 600; }
+  .fb-msg { font-size: 12px; color: #4ade80; margin-top: 8px; display: none; }
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
@@ -263,150 +323,258 @@ ANALYTICS_HTML = """<!DOCTYPE html>
   </div>
   <div class="sidebar-nav">
     <div class="nav-section">რეპორტები</div>
-    <a class="nav-item active" onclick="loadReport('weekly')"><span class="nav-icon">📅</span> კვირის რეპორტი</a>
-    <a class="nav-item" onclick="loadReport('monthly')"><span class="nav-icon">📆</span> თვის რეპორტი</a>
+    <a class="nav-item active" data-nav="reports-weekly" onclick="showView('reports','weekly')"><span class="nav-icon">📅</span> კვირის რეპორტი</a>
+    <a class="nav-item" data-nav="reports-monthly" onclick="showView('reports','monthly')"><span class="nav-icon">📆</span> თვის რეპორტი</a>
+
+    <div class="nav-section">მონიტორინგი</div>
+    <a class="nav-item" data-nav="activity" onclick="showView('activity')"><span class="nav-icon">📋</span> აქტივობის ლოგი</a>
+    <a class="nav-item" data-nav="fb" onclick="showView('fb')"><span class="nav-icon">📘</span> FB Insights</a>
 
     <div class="nav-section">ნავიგაცია</div>
     <a class="nav-item" href="/"><span class="nav-icon">🏠</span> მთავარი დეშბორდი</a>
   </div>
-  <div class="sidebar-footer">● FB Analytics v1.0</div>
+  <div class="sidebar-footer">● FB Analytics v2.0</div>
 </nav>
 
 <!-- Main -->
 <div class="main">
-  <div class="page-header">
-    <div>
-      <h2 id="pageTitle">Facebook ანალიტიკა</h2>
-      <p id="pageSub">პერიოდი: იტვირთება...</p>
-    </div>
-    <div class="header-actions">
-      <button class="btn btn-secondary" onclick="refreshData()" id="btnRefresh">🔄 განახლება</button>
-      <button class="btn btn-primary" onclick="generateReport()" id="btnGenerate">📊 ახალი რეპორტი</button>
-    </div>
-  </div>
 
-  <!-- Period tabs -->
-  <div class="period-tabs">
-    <div class="period-tab active" onclick="switchPeriod(this, 'weekly')">კვირის</div>
-    <div class="period-tab" onclick="switchPeriod(this, 'monthly')">თვის</div>
-  </div>
-
-  <!-- Loading -->
-  <div id="loadingState" class="loading">
-    <div class="spinner"></div>
-    <p style="margin-top:12px">ანალიტიკა იტვირთება...</p>
-  </div>
-
-  <!-- Content (hidden until loaded) -->
-  <div id="reportContent" style="display:none">
-
-    <!-- KPI Cards -->
-    <div class="kpi-grid" id="kpiGrid"></div>
-
-    <!-- 1. Distribution -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title"><span class="section-num num-blue">1</span> დისტრიბუცია</span>
-        <span class="section-badge" id="distBadge">—</span>
+  <!-- ═══════════════ REPORTS VIEW ═══════════════ -->
+  <div id="viewReports">
+    <div class="page-header">
+      <div>
+        <h2 id="pageTitle">Facebook ანალიტიკა</h2>
+        <p id="pageSub">პერიოდი: იტვირთება...</p>
       </div>
-      <div class="stat-grid" id="distStats"></div>
-      <div id="contentTypeBreakdown" style="margin-top:16px"></div>
-    </div>
-
-    <!-- 2. Attention -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title"><span class="section-num num-green">2</span> ყურადღება</span>
+      <div class="header-actions">
+        <button class="btn btn-secondary" onclick="refreshData()">🔄 განახლება</button>
+        <button class="btn btn-primary" onclick="generateReport()" id="btnGenerate">📊 ახალი რეპორტი</button>
       </div>
-      <div class="stat-grid" id="attStats"></div>
     </div>
 
-    <!-- 3. Engagement -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title"><span class="section-num num-orange">3</span> ჩართულობა და ვირალურობა</span>
-      </div>
-      <div class="stat-grid" id="engStats"></div>
-      <div class="reactions-row" id="reactionsRow"></div>
+    <div class="period-tabs">
+      <div class="period-tab active" onclick="switchPeriod(this, 'weekly')">კვირის</div>
+      <div class="period-tab" onclick="switchPeriod(this, 'monthly')">თვის</div>
     </div>
 
-    <!-- 4. Audience + 5. Trust (side by side) -->
-    <div class="cols-2">
+    <div id="loadingState" class="loading">
+      <div class="spinner"></div>
+      <p style="margin-top:12px">ანალიტიკა იტვირთება...</p>
+    </div>
+
+    <div id="reportContent" style="display:none">
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <!-- 1. Distribution -->
       <div class="section">
         <div class="section-header">
-          <span class="section-title"><span class="section-num num-purple">4</span> აუდიტორია</span>
+          <span class="section-title"><span class="section-num num-blue">1</span> დისტრიბუცია</span>
+          <span class="section-badge" id="distBadge">—</span>
         </div>
-        <div class="stat-grid" id="audStats"></div>
-        <div id="growthTrend" style="margin-top:16px"></div>
+        <div class="stat-grid" id="distStats"></div>
+        <div id="contentTypeBreakdown" style="margin-top:16px"></div>
       </div>
 
+      <!-- 2. Attention -->
       <div class="section">
         <div class="section-header">
-          <span class="section-title"><span class="section-num num-red">5</span> ნდობა და უსაფრთხოება</span>
+          <span class="section-title"><span class="section-num num-green">2</span> ყურადღება</span>
         </div>
-        <div id="trustContent"></div>
+        <div class="stat-grid" id="attStats"></div>
       </div>
-    </div>
 
-    <!-- 6. Editorial -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title"><span class="section-num num-teal">6</span> სარედაქციო ინტელიჯენსი</span>
+      <!-- 3. Engagement -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title"><span class="section-num num-orange">3</span> ჩართულობა და ვირალურობა</span>
+        </div>
+        <div class="stat-grid" id="engStats"></div>
+        <div class="reactions-row" id="reactionsRow"></div>
       </div>
+
+      <!-- 4. Audience + 5. Trust -->
       <div class="cols-2">
-        <div>
-          <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">თემების ეფექტურობა</h4>
-          <table class="data-table" id="topicsTable">
-            <thead><tr><th>თემა</th><th class="num">პოსტები</th><th class="num">საშ. ჩართ.</th><th class="num">Share %</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title"><span class="section-num num-purple">4</span> აუდიტორია</span>
+          </div>
+          <div class="stat-grid" id="audStats"></div>
+          <div id="growthTrend" style="margin-top:16px"></div>
         </div>
-        <div>
-          <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">საუკეთესო დრო</h4>
-          <div id="bestTimeContent"></div>
-          <div class="time-grid" id="timeGrid"></div>
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title"><span class="section-num num-red">5</span> ნდობა და უსაფრთხოება</span>
+          </div>
+          <div id="trustContent"></div>
         </div>
+      </div>
+
+      <!-- 6. Editorial -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title"><span class="section-num num-teal">6</span> სარედაქციო ინტელიჯენსი</span>
+        </div>
+        <div class="cols-2">
+          <div>
+            <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">თემების ეფექტურობა</h4>
+            <table class="data-table" id="topicsTable">
+              <thead><tr><th>თემა</th><th class="num">პოსტები</th><th class="num">საშ. ჩართ.</th><th class="num">Share %</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div>
+            <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">საუკეთესო დრო</h4>
+            <div id="bestTimeContent"></div>
+            <div class="time-grid" id="timeGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top & Bottom posts -->
+      <div class="cols-2">
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title">🏆 ტოპ პოსტები</span>
+          </div>
+          <div id="topPostsList"></div>
+        </div>
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title">📉 სუსტი პოსტები</span>
+          </div>
+          <div id="bottomPostsList"></div>
+        </div>
+      </div>
+
+      <!-- Recommendations -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">📋 რეკომენდაციები</span>
+        </div>
+        <ul class="rec-list" id="recList"></ul>
+      </div>
+
+      <!-- Unavailable metrics -->
+      <div id="unavailSection" class="section" style="display:none">
+        <div class="section-header">
+          <span class="section-title">⚠️ მიუწვდომელი მეტრიკები</span>
+        </div>
+        <div class="unavail-list" id="unavailList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ ACTIVITY LOG VIEW ═══════════════ -->
+  <div id="viewActivity" style="display:none">
+    <div class="page-header">
+      <div>
+        <h2>აქტივობის ლოგი</h2>
+        <p>აქტივობის სტატისტიკა და ლოგები</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-primary" onclick="loadActivityView()">🔄 განახლება</button>
       </div>
     </div>
 
-    <!-- Top & Bottom posts -->
+    <div class="kpi-grid" id="actKpiGrid"></div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📂 წყაროების მიხედვით</span>
+      </div>
+      <div class="a-src" id="a-src"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📋 ბოლო აქტივობები</span>
+      </div>
+      <div class="a-filters">
+        <select id="a-fsrc" onchange="loadALogs()">
+          <option value="">ყველა წყარო</option>
+          <option value="interpressnews">interpressnews</option>
+          <option value="rss_cnn">RSS CNN</option>
+          <option value="rss_bbc">RSS BBC</option>
+          <option value="rss_other">RSS Other</option>
+          <option value="manual">manual</option>
+          <option value="auto_card">auto_card</option>
+        </select>
+        <select id="a-fst" onchange="loadALogs()">
+          <option value="">ყველა სტატუსი</option>
+          <option value="approved">დამტკიცებული</option>
+          <option value="rejected">უარყოფილი</option>
+          <option value="pending">მოლოდინში</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>დრო</th><th>წყარო</th><th>სათაური</th><th>სტატუსი</th><th>FB</th></tr></thead>
+          <tbody id="a-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FB INSIGHTS VIEW ═══════════════ -->
+  <div id="viewFB" style="display:none">
+    <div class="page-header">
+      <div>
+        <h2>Facebook Insights</h2>
+        <p>გვერდის სტატისტიკა და ჩართულობა (ცოცხალი მონაცემები)</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-secondary" onclick="refreshFBEngagement()" id="btnFBRefresh">🔄 Engagement განახლება</button>
+        <button class="btn btn-primary" onclick="loadFBView()">📊 განახლება</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="fbKpiGrid"></div>
+    <div class="fb-msg" id="fb-refresh-msg"></div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📊 ჩართულობის მეტრიკები</span>
+      </div>
+      <div class="fb-stats-grid" id="fbInsightCards"></div>
+      <p style="color:#94a3b8;font-size:12px;margin-bottom:8px;">რეაქციები (კვირა):</p>
+      <div class="fb-reactions-row" id="fb-reactions-row"></div>
+    </div>
+
     <div class="cols-2">
       <div class="section">
         <div class="section-header">
-          <span class="section-title">🏆 ტოპ პოსტები</span>
+          <span class="section-title">🎯 საუკეთესო პოსტის დრო</span>
         </div>
-        <div id="topPostsList"></div>
+        <div id="fb-best-hour" style="font-size:28px;font-weight:700;color:#1877f2;margin-bottom:8px">—</div>
+        <p style="color:#64748b;font-size:12px">Engagement-ის მიხედვით</p>
       </div>
       <div class="section">
         <div class="section-header">
-          <span class="section-title">📉 სუსტი პოსტები</span>
+          <span class="section-title">📈 წყაროების ეფექტურობა</span>
         </div>
-        <div id="bottomPostsList"></div>
+        <div class="fb-src-perf" id="fb-src-perf"></div>
       </div>
     </div>
 
-    <!-- Recommendations -->
     <div class="section">
       <div class="section-header">
-        <span class="section-title">📋 რეკომენდაციები</span>
+        <span class="section-title">🏆 ტოპ პოსტები (engagement)</span>
       </div>
-      <ul class="rec-list" id="recList"></ul>
+      <div id="fb-top-list"></div>
     </div>
-
-    <!-- Unavailable metrics -->
-    <div id="unavailSection" class="section" style="display:none">
-      <div class="section-header">
-        <span class="section-title">⚠️ მიუწვდომელი მეტრიკები</span>
-      </div>
-      <div class="unavail-list" id="unavailList"></div>
-    </div>
-
   </div>
+
 </div>
 
 <script>
-let currentPeriod = 'weekly';
-let reportData = null;
+var currentPeriod = 'weekly';
+var reportData = null;
+var currentView = 'reports';
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 function fmtNum(n) {
   n = parseInt(n || 0);
@@ -415,24 +583,36 @@ function fmtNum(n) {
   return n.toLocaleString('ka-GE');
 }
 
-function trendClass(val) {
-  if (val > 0) return 'up';
-  if (val < 0) return 'down';
-  return 'neutral';
+/* ═══════════════ VIEW SWITCHING ═══════════════ */
+function showView(view, subType) {
+  currentView = view;
+  document.getElementById('viewReports').style.display = view === 'reports' ? 'block' : 'none';
+  document.getElementById('viewActivity').style.display = view === 'activity' ? 'block' : 'none';
+  document.getElementById('viewFB').style.display = view === 'fb' ? 'block' : 'none';
+
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  var navKey = view;
+  if (view === 'reports' && subType) navKey = 'reports-' + subType;
+  var activeNav = document.querySelector('.nav-item[data-nav="' + navKey + '"]');
+  if (activeNav) activeNav.classList.add('active');
+
+  if (view === 'reports') {
+    if (subType) loadReport(subType);
+  } else if (view === 'activity') {
+    loadActivityView();
+  } else if (view === 'fb') {
+    loadFBView();
+  }
 }
 
-function trendArrow(val) {
-  if (val > 0) return '+' + val.toFixed(1) + '%';
-  if (val < 0) return val.toFixed(1) + '%';
-  return '—';
-}
-
+/* ═══════════════ REPORTS ═══════════════ */
 function switchPeriod(el, period) {
-  document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.period-tab').forEach(function(t) { t.classList.remove('active'); });
   el.classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.nav-item')[period === 'weekly' ? 0 : 1].classList.add('active');
   currentPeriod = period;
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  var activeNav = document.querySelector('.nav-item[data-nav="reports-' + period + '"]');
+  if (activeNav) activeNav.classList.add('active');
   loadReport(period);
 }
 
@@ -442,8 +622,8 @@ function loadReport(period) {
   document.getElementById('reportContent').style.display = 'none';
 
   fetch('/api/analytics/' + currentPeriod)
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
       if (!data.ok || !data.report) {
         document.getElementById('loadingState').innerHTML =
           '<p style="color:#f87171">რეპორტი ჯერ არ გენერირებულა.</p>' +
@@ -453,53 +633,48 @@ function loadReport(period) {
       reportData = data.report;
       renderReport(reportData);
     })
-    .catch(err => {
+    .catch(function(err) {
       document.getElementById('loadingState').innerHTML =
         '<p style="color:#f87171">შეცდომა: ' + err.message + '</p>';
     });
 }
 
 function generateReport() {
-  const btn = document.getElementById('btnGenerate');
+  var btn = document.getElementById('btnGenerate');
   btn.disabled = true;
   btn.textContent = '⏳ გენერირდება...';
-
   fetch('/api/analytics/test-' + currentPeriod)
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
       btn.disabled = false;
       btn.textContent = '📊 ახალი რეპორტი';
-      if (data.ok) {
-        loadReport(currentPeriod);
-      }
+      if (data.ok) loadReport(currentPeriod);
     })
-    .catch(() => {
+    .catch(function() {
       btn.disabled = false;
       btn.textContent = '📊 ახალი რეპორტი';
     });
 }
 
-function refreshData() {
-  loadReport(currentPeriod);
-}
+function refreshData() { loadReport(currentPeriod); }
 
 function renderReport(r) {
-  const period = r.period || {};
+  var period = r.period || {};
   document.getElementById('pageTitle').textContent =
     currentPeriod === 'weekly' ? 'კვირის ანალიტიკა' : 'თვის სტრატეგიული ანალიტიკა';
   document.getElementById('pageSub').textContent =
     'პერიოდი: ' + (period.since || '—') + ' — ' + (period.until || '—') +
     ' | განახლდა: ' + (r.computed_at || '').slice(0, 16).replace('T', ' ');
 
-  const dist = r.distribution || {};
-  const att = r.attention || {};
-  const eng = r.engagement || {};
-  const aud = r.audience || {};
-  const trust = r.trust || {};
-  const editorial = r.editorial || {};
+  var dist = r.distribution || {};
+  var att = r.attention || {};
+  var eng = r.engagement || {};
+  var aud = r.audience || {};
+  var trust = r.trust || {};
+  var editorial = r.editorial || {};
 
   // KPI cards
-  const kpis = [
+  var kpis = [
     { label: 'მიღწევა', value: fmtNum(dist.total_reach), sub: 'Reach', color: '#1877f2' },
     { label: 'შთაბეჭდილებები', value: fmtNum(dist.total_impressions), sub: 'Impressions', color: '#60a5fa' },
     { label: 'ჩართულობა', value: (eng.engagement_rate || 0).toFixed(1) + '%', sub: 'Engagement Rate', color: '#f59e0b' },
@@ -507,12 +682,11 @@ function renderReport(r) {
     { label: 'მიმდევრები', value: (aud.net_growth >= 0 ? '+' : '') + (aud.net_growth || 0), sub: 'Net Growth', color: aud.net_growth >= 0 ? '#4ade80' : '#f87171' },
     { label: 'ნეგატიური', value: (trust.negative_rate || 0).toFixed(1) + '%', sub: 'Negative Rate', color: trust.negative_rate > 1.5 ? '#f87171' : '#4ade80' },
   ];
-  document.getElementById('kpiGrid').innerHTML = kpis.map(k =>
-    '<div class="kpi-card">' +
-    '<div class="kpi-label">' + k.label + '</div>' +
-    '<div class="kpi-value" style="color:' + k.color + '">' + k.value + '</div>' +
-    '<div class="kpi-sub">' + k.sub + '</div></div>'
-  ).join('');
+  document.getElementById('kpiGrid').innerHTML = kpis.map(function(k) {
+    return '<div class="kpi-card"><div class="kpi-label">' + k.label + '</div>' +
+      '<div class="kpi-value" style="color:' + k.color + '">' + k.value + '</div>' +
+      '<div class="kpi-sub">' + k.sub + '</div></div>';
+  }).join('');
 
   // Distribution
   document.getElementById('distBadge').textContent = (dist.total_posts || 0) + ' პოსტი';
@@ -522,13 +696,13 @@ function renderReport(r) {
     statItem('სიხშირე', (dist.frequency || 0).toFixed(2)) +
     statItem('პოსტები', dist.total_posts || 0);
 
-  const byType = dist.by_content_type || {};
-  const typeKeys = Object.keys(byType);
+  var byType = dist.by_content_type || {};
+  var typeKeys = Object.keys(byType);
   if (typeKeys.length) {
-    const colors = { photo: 'tag-blue', video: 'tag-purple', link: 'tag-green', status: 'tag-gray', reel: 'tag-yellow' };
+    var colors = { photo: 'tag-blue', video: 'tag-purple', link: 'tag-green', status: 'tag-gray', reel: 'tag-yellow' };
     document.getElementById('contentTypeBreakdown').innerHTML =
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-      typeKeys.map(t => '<span class="tag ' + (colors[t] || 'tag-gray') + '">' + t + ': ' + byType[t].count + '</span>').join('') +
+      typeKeys.map(function(t) { return '<span class="tag ' + (colors[t] || 'tag-gray') + '">' + t + ': ' + byType[t].count + '</span>'; }).join('') +
       '</div>';
   } else {
     document.getElementById('contentTypeBreakdown').innerHTML = '';
@@ -550,14 +724,14 @@ function renderReport(r) {
     statItem('📤 Share Rate', (eng.share_rate || 0).toFixed(1) + '%') +
     statItem('საშუალო', (eng.avg_engagement_per_post || 0).toFixed(1));
 
-  const rx = eng.reactions || {};
-  const rxItems = [
+  var rx = eng.reactions || {};
+  var rxItems = [
     { emoji: '❤️', key: 'love' }, { emoji: '😂', key: 'haha' },
     { emoji: '😮', key: 'wow' }, { emoji: '😢', key: 'sad' }, { emoji: '😠', key: 'angry' }
   ];
-  document.getElementById('reactionsRow').innerHTML = rxItems.map(r =>
-    '<div class="rx-badge">' + r.emoji + ' <span class="rx-count">' + (rx[r.key] || 0) + '</span></div>'
-  ).join('');
+  document.getElementById('reactionsRow').innerHTML = rxItems.map(function(ri) {
+    return '<div class="rx-badge">' + ri.emoji + ' <span class="rx-count">' + (rx[ri.key] || 0) + '</span></div>';
+  }).join('');
 
   // Audience
   document.getElementById('audStats').innerHTML =
@@ -565,14 +739,14 @@ function renderReport(r) {
     statItem('წასული', '-' + (aud.unfollows || 0)) +
     statItem('წმინდა', (aud.net_growth >= 0 ? '+' : '') + (aud.net_growth || 0));
 
-  const daily = aud.daily_trend || [];
+  var daily = aud.daily_trend || [];
   if (daily.length) {
-    const maxNet = Math.max(...daily.map(d => Math.abs(d.net)), 1);
+    var maxNet = Math.max.apply(null, daily.map(function(d) { return Math.abs(d.net); }).concat([1]));
     document.getElementById('growthTrend').innerHTML =
       '<div style="display:flex;gap:4px;align-items:flex-end;height:60px">' +
-      daily.map(d => {
-        const h = Math.max(4, Math.abs(d.net) / maxNet * 50);
-        const color = d.net >= 0 ? '#4ade80' : '#f87171';
+      daily.map(function(d) {
+        var h = Math.max(4, Math.abs(d.net) / maxNet * 50);
+        var color = d.net >= 0 ? '#4ade80' : '#f87171';
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center">' +
           '<div style="width:100%;height:' + h + 'px;background:' + color + ';border-radius:3px;min-width:4px"></div>' +
           '<span style="font-size:9px;color:#475569;margin-top:2px">' + (d.date || '').slice(5) + '</span></div>';
@@ -582,8 +756,8 @@ function renderReport(r) {
   }
 
   // Trust
-  const sent = trust.sentiment || {};
-  let trustHTML = '<div class="stat-grid">' +
+  var sent = trust.sentiment || {};
+  var trustHTML = '<div class="stat-grid">' +
     statItem('ნეგატიური', fmtNum(trust.negative_feedback)) +
     statItem('ნეგ. %', (trust.negative_rate || 0).toFixed(1) + '%') +
     '</div>';
@@ -606,11 +780,11 @@ function renderReport(r) {
     trustHTML += '<div class="alert alert-danger">⚠️ ' + trust.alert + '</div>';
   }
 
-  const negTypes = trust.negative_by_type || {};
-  const negKeys = Object.keys(negTypes);
+  var negTypes = trust.negative_by_type || {};
+  var negKeys = Object.keys(negTypes);
   if (negKeys.length) {
     trustHTML += '<div style="margin-top:12px">';
-    negKeys.forEach(k => {
+    negKeys.forEach(function(k) {
       trustHTML += '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px">' + k + ': ' + negTypes[k] + '</div>';
     });
     trustHTML += '</div>';
@@ -618,12 +792,12 @@ function renderReport(r) {
   document.getElementById('trustContent').innerHTML = trustHTML;
 
   // Editorial — Topics
-  const topics = editorial.topics || {};
-  const topicKeys = Object.keys(topics);
-  const topicColors = ['tag-blue', 'tag-green', 'tag-purple', 'tag-yellow', 'tag-red', 'tag-gray'];
-  const tbody = document.querySelector('#topicsTable tbody');
-  tbody.innerHTML = topicKeys.length ? topicKeys.map((t, i) => {
-    const d = topics[t];
+  var topics = editorial.topics || {};
+  var topicKeys = Object.keys(topics);
+  var topicColors = ['tag-blue', 'tag-green', 'tag-purple', 'tag-yellow', 'tag-red', 'tag-gray'];
+  var tbody = document.querySelector('#topicsTable tbody');
+  tbody.innerHTML = topicKeys.length ? topicKeys.map(function(t, i) {
+    var d = topics[t];
     return '<tr><td><span class="tag ' + topicColors[i % topicColors.length] + '">' + t + '</span></td>' +
       '<td class="num">' + d.count + '</td>' +
       '<td class="num highlight">' + (d.avg_engagement || 0).toFixed(1) + '</td>' +
@@ -631,8 +805,8 @@ function renderReport(r) {
   }).join('') : '<tr><td colspan="4" style="color:#475569;text-align:center">თემები ვერ მოიძებნა</td></tr>';
 
   // Editorial — Best time
-  const times = editorial.best_posting_times || {};
-  let timeHTML = '';
+  var times = editorial.best_posting_times || {};
+  var timeHTML = '';
   if (times.best_hour !== null && times.best_hour !== undefined) {
     timeHTML += '<div style="margin-bottom:12px">' +
       '<span style="font-size:20px;font-weight:700;color:#1877f2">' + String(times.best_hour).padStart(2, '0') + ':00</span>' +
@@ -646,15 +820,15 @@ function renderReport(r) {
   document.getElementById('bestTimeContent').innerHTML = timeHTML || '<p style="color:#475569;font-size:12px">მონაცემები არ არის</p>';
 
   // Time heatmap
-  const byHour = times.by_hour || {};
-  const hourKeys = Object.keys(byHour).map(Number).sort((a, b) => a - b);
+  var byHour = times.by_hour || {};
+  var hourKeys = Object.keys(byHour).map(Number).sort(function(a, b) { return a - b; });
   if (hourKeys.length) {
-    const maxEng = Math.max(...hourKeys.map(h => byHour[h].avg_engagement || 0), 1);
-    document.getElementById('timeGrid').innerHTML = Array.from({length: 24}, (_, h) => {
-      const d = byHour[h];
-      let cls = '';
+    var maxEng = Math.max.apply(null, hourKeys.map(function(h) { return byHour[h].avg_engagement || 0; }).concat([1]));
+    document.getElementById('timeGrid').innerHTML = Array.from({length: 24}, function(_, h) {
+      var d = byHour[h];
+      var cls = '';
       if (d) {
-        const ratio = (d.avg_engagement || 0) / maxEng;
+        var ratio = (d.avg_engagement || 0) / maxEng;
         cls = ratio > 0.7 ? 'hot' : ratio > 0.3 ? 'warm' : '';
       }
       return '<div class="time-cell ' + cls + '">' + h + '</div>';
@@ -668,21 +842,20 @@ function renderReport(r) {
   document.getElementById('bottomPostsList').innerHTML = renderPostsList(r.bottom_posts || [], '📉');
 
   // Recommendations
-  const recs = r.recommendations || [];
+  var recs = r.recommendations || [];
   document.getElementById('recList').innerHTML = recs.length ?
-    recs.map((rec, i) => '<li class="rec-item"><span class="rec-num">' + (i + 1) + '</span><span>' + rec + '</span></li>').join('') :
+    recs.map(function(rec, i) { return '<li class="rec-item"><span class="rec-num">' + (i + 1) + '</span><span>' + rec + '</span></li>'; }).join('') :
     '<li style="color:#475569;font-size:13px">რეკომენდაციები არ არის</li>';
 
   // Unavailable
-  const unavail = r.unavailable_metrics || [];
+  var unavail = r.unavailable_metrics || [];
   if (unavail.length) {
     document.getElementById('unavailSection').style.display = 'block';
-    document.getElementById('unavailList').innerHTML = unavail.map(m => '<div class="unavail-item">' + m + '</div>').join('');
+    document.getElementById('unavailList').innerHTML = unavail.map(function(m) { return '<div class="unavail-item">' + m + '</div>'; }).join('');
   } else {
     document.getElementById('unavailSection').style.display = 'none';
   }
 
-  // Show content
   document.getElementById('loadingState').style.display = 'none';
   document.getElementById('reportContent').style.display = 'block';
 }
@@ -693,9 +866,9 @@ function statItem(label, value) {
 
 function renderPostsList(posts, icon) {
   if (!posts.length) return '<p style="color:#475569;font-size:13px">პოსტები არ მოიძებნა</p>';
-  return posts.map((p, i) => {
-    const msg = (p.message || '').slice(0, 70) + ((p.message || '').length > 70 ? '...' : '');
-    const topicTag = p.topic ? '<span class="tag tag-blue" style="margin-left:6px">' + p.topic + '</span>' : '';
+  return posts.map(function(p, i) {
+    var msg = (p.message || '').slice(0, 70) + ((p.message || '').length > 70 ? '...' : '');
+    var topicTag = p.topic ? '<span class="tag tag-blue" style="margin-left:6px">' + p.topic + '</span>' : '';
     return '<div style="padding:12px;background:#1a1d2e;border-radius:8px;margin-bottom:8px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
       '<span style="font-size:13px;font-weight:600;color:#e2e8f0">' + icon + ' ' + (i + 1) + '. ' + (msg || '(უსათაურო)') + '</span>' +
@@ -710,7 +883,156 @@ function renderPostsList(posts, icon) {
   }).join('');
 }
 
-// Load on start
+/* ═══════════════ ACTIVITY LOG ═══════════════ */
+function loadActivityView() {
+  fetch('/api/analytics/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      var kpis = [
+        { label: 'დღეს', value: s.today || 0, color: '#1877f2' },
+        { label: 'კვირა', value: s.week || 0, color: '#60a5fa' },
+        { label: 'თვე', value: s.month || 0, color: '#8b5cf6' },
+        { label: 'სულ', value: s.total || 0, color: '#e2e8f0' },
+        { label: 'დამტკიცებული', value: s.approved || 0, color: '#4ade80' },
+        { label: 'უარყოფილი', value: s.rejected || 0, color: '#f87171' },
+        { label: 'გამოქვეყნებული', value: s.published || 0, color: '#1877f2' },
+      ];
+      document.getElementById('actKpiGrid').innerHTML = kpis.map(function(k) {
+        return '<div class="kpi-card"><div class="kpi-label">' + k.label + '</div>' +
+          '<div class="kpi-value" style="color:' + k.color + '">' + k.value + '</div></div>';
+      }).join('');
+
+      var srcDiv = document.getElementById('a-src');
+      srcDiv.innerHTML = '';
+      var bySrc = s.by_source || {};
+      Object.keys(bySrc).forEach(function(k) {
+        srcDiv.innerHTML += '<div class="a-src-tag">' + esc(k) + '<span class="cnt">' + bySrc[k] + '</span></div>';
+      });
+
+      loadALogs();
+    })
+    .catch(function(e) { console.log('Activity load error:', e); });
+}
+
+function loadALogs() {
+  var src = document.getElementById('a-fsrc').value;
+  var st = document.getElementById('a-fst').value;
+  var url = '/api/analytics/logs?limit=30';
+  if (src) url += '&source=' + encodeURIComponent(src);
+  if (st) url += '&status=' + encodeURIComponent(st);
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var tb = document.getElementById('a-tbody');
+      tb.innerHTML = '';
+      (d.logs || []).forEach(function(l) {
+        var ts = (l.timestamp || '').replace('T', ' ').slice(0, 16);
+        var sc = l.status === 'approved' ? 'st-ok' : l.status === 'rejected' ? 'st-no' : 'st-wait';
+        var sl = l.status === 'approved' ? 'დამტკ.' : l.status === 'rejected' ? 'უარყ.' : 'მოლოდ.';
+        var fb = l.facebook_post_id ? '✅' : '—';
+        tb.innerHTML += '<tr><td>' + esc(ts) + '</td><td>' + esc(l.source || '') + '</td><td>' + esc((l.title || '').slice(0, 40)) + '</td><td><span class="st-badge ' + sc + '">' + sl + '</span></td><td>' + fb + '</td></tr>';
+      });
+    })
+    .catch(function(e) { console.log('Activity logs error:', e); });
+}
+
+/* ═══════════════ FB INSIGHTS ═══════════════ */
+function loadFBView() {
+  fetch('/api/fb/page-stats')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var net = (d.fan_adds || 0) - (d.fan_removes || 0);
+      var growthBadge = net !== 0 ? '<span class="fb-growth ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net > 0 ? '+' : '') + net + '</span>' : '';
+      var kpis = [
+        { label: 'მიმდევრები', value: (d.followers || 0).toLocaleString(), extra: growthBadge, color: '#1877f2' },
+        { label: 'ფანები', value: (d.fans || 0).toLocaleString(), color: '#60a5fa' },
+        { label: 'შთაბეჭდილებები', value: (d.page_impressions || 0).toLocaleString(), color: '#f59e0b' },
+        { label: 'ჩართულობა', value: (d.page_post_engagements || 0).toLocaleString(), color: '#8b5cf6' },
+      ];
+      document.getElementById('fbKpiGrid').innerHTML = kpis.map(function(k) {
+        return '<div class="kpi-card"><div class="kpi-label">' + k.label + '</div>' +
+          '<div class="kpi-value" style="color:' + k.color + '">' + k.value + (k.extra || '') + '</div></div>';
+      }).join('');
+    })
+    .catch(function(e) { console.log('FB stats error:', e); });
+
+  fetch('/api/fb/computed-analytics')
+    .then(function(r) { return r.json(); })
+    .then(function(c) {
+      if (c.error) return;
+      document.getElementById('fbInsightCards').innerHTML =
+        '<div class="fb-stat-card"><div class="fv">' + (c.engagement_rate || 0).toFixed(1) + '%</div><div class="fl">Engagement Rate</div></div>' +
+        '<div class="fb-stat-card"><div class="fv">' + (c.avg_engagement || 0).toFixed(1) + '</div><div class="fl">საშ. ჩართულობა</div></div>' +
+        '<div class="fb-stat-card"><div class="fv">' + (c.week_reach || 0).toLocaleString() + '</div><div class="fl">კვირის Reach</div></div>' +
+        '<div class="fb-stat-card"><div class="fv">' + (c.total_posts || 0) + '</div><div class="fl">პოსტები (კვირა)</div></div>';
+
+      var rx = c.reactions || {};
+      document.getElementById('fb-reactions-row').innerHTML =
+        '<div class="fb-rx">❤️ <span class="rx-n">' + (rx.love || 0) + '</span></div>' +
+        '<div class="fb-rx">😂 <span class="rx-n">' + (rx.haha || 0) + '</span></div>' +
+        '<div class="fb-rx">😮 <span class="rx-n">' + (rx.wow || 0) + '</span></div>' +
+        '<div class="fb-rx">😢 <span class="rx-n">' + (rx.sad || 0) + '</span></div>' +
+        '<div class="fb-rx">😠 <span class="rx-n">' + (rx.angry || 0) + '</span></div>';
+
+      if (c.best_hour && c.best_hour !== '—') {
+        document.getElementById('fb-best-hour').textContent = c.best_hour + ':00';
+      }
+
+      var sp = c.source_performance || {};
+      var spDiv = document.getElementById('fb-src-perf');
+      spDiv.innerHTML = '';
+      Object.keys(sp).forEach(function(src) {
+        var info = sp[src];
+        spDiv.innerHTML += '<div class="fb-src-row"><span class="fb-src-name">' + esc(src) + ' (' + (info.count || 0) + ' პოსტი)</span><span class="fb-src-val">საშ. ' + (info.avg_engagement || 0).toFixed(1) + '</span></div>';
+      });
+      if (!Object.keys(sp).length) spDiv.innerHTML = '<div style="color:#64748b;font-size:12px;padding:8px;">მონაცემები არ არის</div>';
+    })
+    .catch(function(e) { console.log('FB analytics error:', e); });
+
+  fetch('/api/fb/top-engaged?limit=5')
+    .then(function(r) { return r.json(); })
+    .then(function(d2) {
+      var list = document.getElementById('fb-top-list');
+      list.innerHTML = '';
+      (d2.posts || []).forEach(function(p) {
+        var likes = parseInt(p.likes || 0), cmts = parseInt(p.comments || 0), shares = parseInt(p.shares || 0);
+        var rxBadge = '';
+        if (p.reactions) {
+          var rr = p.reactions;
+          if (rr.love) rxBadge += ' ❤️' + rr.love;
+          if (rr.haha) rxBadge += ' 😂' + rr.haha;
+          if (rr.wow) rxBadge += ' 😮' + rr.wow;
+        }
+        list.innerHTML += '<div class="fb-top-item"><div class="fb-top-title">' + esc((p.title || '').slice(0, 50)) + '</div><div class="fb-top-eng">👍 <span>' + likes + '</span> 💬 <span>' + cmts + '</span> 🔄 <span>' + shares + '</span>' + rxBadge + '</div></div>';
+      });
+      if (!(d2.posts || []).length) list.innerHTML = '<div style="color:#64748b;font-size:12px;padding:12px;">ჯერ არ არის გამოქვეყნებული პოსტები</div>';
+    })
+    .catch(function(e) { console.log('FB top error:', e); });
+}
+
+function refreshFBEngagement() {
+  var btn = document.getElementById('btnFBRefresh');
+  var msg = document.getElementById('fb-refresh-msg');
+  btn.disabled = true;
+  btn.textContent = '⏳ მიმდინარეობს...';
+  msg.style.display = 'none';
+  fetch('/api/fb/refresh-engagement')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      msg.textContent = '✅ განახლდა ' + d.updated + '/' + d.total + ' პოსტი';
+      msg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '🔄 Engagement განახლება';
+      loadFBView();
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      btn.textContent = '🔄 Engagement განახლება';
+      console.log('FB refresh error:', e);
+    });
+}
+
+// Load initial view
 loadReport('weekly');
 </script>
 </body>
