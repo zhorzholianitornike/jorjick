@@ -2307,30 +2307,55 @@ async def api_test_weekly_report():
 
 @app.get("/api/debug/fb-post/{post_id}")
 async def api_debug_fb_post(post_id: str):
-    """Debug: show raw Graph API response for a post."""
+    """Debug: try multiple field sets and show raw Graph API responses."""
     from facebook import GRAPH_URL, PAGE_TOKEN, PAGE_ID
     if not PAGE_TOKEN:
         return {"error": "No FB_PAGE_TOKEN"}
+    results = {}
+    # Test 1: Post fields (with shares)
     try:
-        resp = requests.get(
-            f"{GRAPH_URL}/{post_id}",
-            params={
-                "access_token": PAGE_TOKEN,
-                "fields": (
-                    "likes.summary(true),comments.summary(true),shares,"
-                    "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
-                    "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),"
-                    "reactions.type(WOW).limit(0).summary(true).as(reactions_wow),"
-                    "reactions.type(SAD).limit(0).summary(true).as(reactions_sad),"
-                    "reactions.type(ANGRY).limit(0).summary(true).as(reactions_angry),"
-                    "created_time"
-                ),
-            },
-            timeout=15,
-        )
-        return {"status": resp.status_code, "raw": resp.json(), "post_id_used": post_id}
+        r1 = requests.get(f"{GRAPH_URL}/{post_id}", params={
+            "access_token": PAGE_TOKEN,
+            "fields": "likes.summary(true),comments.summary(true),shares,"
+                      "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
+                      "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),created_time"
+        }, timeout=15)
+        results["post_fields"] = {"status": r1.status_code, "data": r1.json()}
     except Exception as e:
-        return {"error": str(e)}
+        results["post_fields"] = {"error": str(e)}
+    # Test 2: Photo fields (no shares, no aliases)
+    try:
+        r2 = requests.get(f"{GRAPH_URL}/{post_id}", params={
+            "access_token": PAGE_TOKEN,
+            "fields": "likes.summary(true),comments.summary(true),reactions.summary(total_count),created_time"
+        }, timeout=15)
+        results["photo_simple"] = {"status": r2.status_code, "data": r2.json()}
+    except Exception as e:
+        results["photo_simple"] = {"error": str(e)}
+    # Test 3: Photo fields with aliased reactions
+    try:
+        r3 = requests.get(f"{GRAPH_URL}/{post_id}", params={
+            "access_token": PAGE_TOKEN,
+            "fields": "likes.summary(true),comments.summary(true),"
+                      "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
+                      "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),created_time"
+        }, timeout=15)
+        results["photo_aliased"] = {"status": r3.status_code, "data": r3.json()}
+    except Exception as e:
+        results["photo_aliased"] = {"error": str(e)}
+    # Test 4: PAGE_ID_post_id format
+    if PAGE_ID and "_" not in str(post_id):
+        compound = f"{PAGE_ID}_{post_id}"
+        try:
+            r4 = requests.get(f"{GRAPH_URL}/{compound}", params={
+                "access_token": PAGE_TOKEN,
+                "fields": "likes.summary(true),comments.summary(true),shares,"
+                          "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),created_time"
+            }, timeout=15)
+            results["compound_id"] = {"status": r4.status_code, "data": r4.json(), "id": compound}
+        except Exception as e:
+            results["compound_id"] = {"error": str(e)}
+    return results
 
 
 _fb_page_cache = {}  # cached page stats
