@@ -1,0 +1,717 @@
+#!/usr/bin/env python3
+"""Analytics dashboard — professional dark-themed UI.
+
+Served at /analytics route. Does NOT modify existing dashboard.
+"""
+
+ANALYTICS_HTML = """<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FB Analytics — Crea Communication</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: 260px;
+    background: #151620;
+    border-right: 1px solid #2d3148;
+    display: flex; flex-direction: column;
+    z-index: 100;
+  }
+  .sidebar-brand {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid #2d3148;
+  }
+  .sidebar-brand h1 {
+    font-size: 18px; font-weight: 700; color: #fff;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-brand h1 .logo-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #1877f2, #0c277d);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #fff;
+  }
+  .sidebar-brand p { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+  .sidebar-nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
+  .nav-section { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; padding: 12px 12px 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    color: #94a3b8; font-size: 14px; transition: all 0.15s;
+    text-decoration: none;
+  }
+  .nav-item:hover { background: #1e2030; color: #e2e8f0; }
+  .nav-item.active { background: #1877f2; color: #fff; }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer {
+    padding: 16px 24px; border-top: 1px solid #2d3148;
+    font-size: 12px; color: #475569;
+  }
+
+  /* ── Main content ── */
+  .main { margin-left: 260px; padding: 32px; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 32px;
+  }
+  .page-header h2 { font-size: 28px; font-weight: 700; }
+  .page-header p { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+
+  .header-actions { display: flex; gap: 10px; }
+  .btn {
+    padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: #1877f2; color: #fff; }
+  .btn-primary:hover { background: #1565c0; }
+  .btn-secondary { background: #1e2030; color: #e2e8f0; border: 1px solid #2d3148; }
+  .btn-secondary:hover { background: #2d3148; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Period tabs ── */
+  .period-tabs {
+    display: flex; gap: 4px; background: #151620; border-radius: 10px;
+    padding: 4px; margin-bottom: 28px; width: fit-content;
+  }
+  .period-tab {
+    padding: 8px 20px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: #94a3b8; transition: all 0.15s;
+  }
+  .period-tab.active { background: #1877f2; color: #fff; }
+  .period-tab:hover:not(.active) { color: #e2e8f0; }
+
+  /* ── KPI Cards ── */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: #151620; border: 1px solid #2d3148; border-radius: 12px;
+    padding: 20px; transition: border-color 0.15s;
+  }
+  .kpi-card:hover { border-color: #3d4168; }
+  .kpi-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-value { font-size: 28px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
+  .kpi-trend { font-size: 12px; font-weight: 600; }
+  .kpi-trend.up { color: #4ade80; }
+  .kpi-trend.down { color: #f87171; }
+  .kpi-trend.neutral { color: #64748b; }
+  .kpi-sub { font-size: 11px; color: #475569; margin-top: 2px; }
+
+  /* ── Sections ── */
+  .section {
+    background: #151620; border: 1px solid #2d3148; border-radius: 12px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .section-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 6px; font-size: 12px; font-weight: 700;
+  }
+  .num-blue { background: #1877f2; color: #fff; }
+  .num-green { background: #059669; color: #fff; }
+  .num-orange { background: #d97706; color: #fff; }
+  .num-purple { background: #7c3aed; color: #fff; }
+  .num-red { background: #dc2626; color: #fff; }
+  .num-teal { background: #0891b2; color: #fff; }
+  .section-badge {
+    padding: 4px 10px; border-radius: 20px; font-size: 11px;
+    font-weight: 600; background: #1e2030; color: #94a3b8;
+  }
+
+  /* ── Stat grid ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
+  .stat-item {
+    background: #1a1d2e; border-radius: 8px; padding: 14px;
+    text-align: center;
+  }
+  .stat-val { font-size: 22px; font-weight: 700; color: #fff; }
+  .stat-label { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+  /* ── Reactions row ── */
+  .reactions-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .rx-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: #1a1d2e; padding: 8px 14px; border-radius: 8px;
+    font-size: 14px;
+  }
+  .rx-badge .rx-count { font-weight: 700; color: #fff; }
+
+  /* ── Table ── */
+  .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .data-table th {
+    text-align: left; padding: 10px 14px; font-size: 11px;
+    color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid #2d3148;
+  }
+  .data-table td {
+    padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #1e2030;
+    color: #e2e8f0;
+  }
+  .data-table tr:hover td { background: #1a1d2e; }
+  .data-table .num { text-align: right; font-weight: 600; }
+  .data-table .highlight { color: #1877f2; font-weight: 700; }
+
+  /* ── Tags ── */
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .tag-blue { background: rgba(24, 119, 242, 0.15); color: #60a5fa; }
+  .tag-green { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+  .tag-red { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+  .tag-yellow { background: rgba(250, 204, 21, 0.15); color: #fbbf24; }
+  .tag-purple { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+  .tag-gray { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+  /* ── Progress bars ── */
+  .progress-bar { height: 6px; background: #1e2030; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .fill-blue { background: #1877f2; }
+  .fill-green { background: #4ade80; }
+  .fill-red { background: #f87171; }
+  .fill-yellow { background: #fbbf24; }
+
+  /* ── Sentiment gauge ── */
+  .sentiment-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+  .sent-pos { background: #4ade80; }
+  .sent-neu { background: #64748b; }
+  .sent-neg { background: #f87171; }
+
+  /* ── Time grid ── */
+  .time-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 12px; }
+  .time-cell {
+    aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; font-size: 10px; color: #94a3b8;
+    background: #1a1d2e; position: relative;
+  }
+  .time-cell.hot { background: #1877f2; color: #fff; font-weight: 700; }
+  .time-cell.warm { background: rgba(24, 119, 242, 0.3); }
+
+  /* ── Alerts ── */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
+  .alert-warn { background: rgba(250, 204, 21, 0.1); border: 1px solid rgba(250, 204, 21, 0.2); color: #fbbf24; }
+  .alert-danger { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); color: #f87171; }
+  .alert-info { background: rgba(96, 165, 250, 0.1); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; }
+
+  /* ── Recommendations ── */
+  .rec-list { list-style: none; }
+  .rec-item {
+    padding: 12px 16px; background: #1a1d2e; border-radius: 8px; margin-bottom: 8px;
+    font-size: 13px; display: flex; align-items: flex-start; gap: 10px;
+    border-left: 3px solid #1877f2;
+  }
+  .rec-num {
+    width: 22px; height: 22px; border-radius: 6px; background: #1877f2;
+    color: #fff; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+
+  /* ── Two columns ── */
+  .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── Loading ── */
+  .loading { text-align: center; padding: 60px; color: #64748b; }
+  .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #2d3148;
+    border-top-color: #1877f2; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Unavailable ── */
+  .unavail-list { margin-top: 8px; }
+  .unavail-item { font-size: 12px; color: #64748b; padding: 4px 0; }
+  .unavail-item::before { content: "·"; margin-right: 8px; color: #475569; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .cols-2 { grid-template-columns: 1fr; }
+    .cols-3 { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <h1><span class="logo-icon">📊</span> FB Analytics</h1>
+    <p>Crea Communication</p>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">რეპორტები</div>
+    <a class="nav-item active" onclick="loadReport('weekly')"><span class="nav-icon">📅</span> კვირის რეპორტი</a>
+    <a class="nav-item" onclick="loadReport('monthly')"><span class="nav-icon">📆</span> თვის რეპორტი</a>
+
+    <div class="nav-section">ნავიგაცია</div>
+    <a class="nav-item" href="/"><span class="nav-icon">🏠</span> მთავარი დეშბორდი</a>
+  </div>
+  <div class="sidebar-footer">● FB Analytics v1.0</div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <div class="page-header">
+    <div>
+      <h2 id="pageTitle">Facebook ანალიტიკა</h2>
+      <p id="pageSub">პერიოდი: იტვირთება...</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="refreshData()" id="btnRefresh">🔄 განახლება</button>
+      <button class="btn btn-primary" onclick="generateReport()" id="btnGenerate">📊 ახალი რეპორტი</button>
+    </div>
+  </div>
+
+  <!-- Period tabs -->
+  <div class="period-tabs">
+    <div class="period-tab active" onclick="switchPeriod(this, 'weekly')">კვირის</div>
+    <div class="period-tab" onclick="switchPeriod(this, 'monthly')">თვის</div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" class="loading">
+    <div class="spinner"></div>
+    <p style="margin-top:12px">ანალიტიკა იტვირთება...</p>
+  </div>
+
+  <!-- Content (hidden until loaded) -->
+  <div id="reportContent" style="display:none">
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- 1. Distribution -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title"><span class="section-num num-blue">1</span> დისტრიბუცია</span>
+        <span class="section-badge" id="distBadge">—</span>
+      </div>
+      <div class="stat-grid" id="distStats"></div>
+      <div id="contentTypeBreakdown" style="margin-top:16px"></div>
+    </div>
+
+    <!-- 2. Attention -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title"><span class="section-num num-green">2</span> ყურადღება</span>
+      </div>
+      <div class="stat-grid" id="attStats"></div>
+    </div>
+
+    <!-- 3. Engagement -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title"><span class="section-num num-orange">3</span> ჩართულობა და ვირალურობა</span>
+      </div>
+      <div class="stat-grid" id="engStats"></div>
+      <div class="reactions-row" id="reactionsRow"></div>
+    </div>
+
+    <!-- 4. Audience + 5. Trust (side by side) -->
+    <div class="cols-2">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title"><span class="section-num num-purple">4</span> აუდიტორია</span>
+        </div>
+        <div class="stat-grid" id="audStats"></div>
+        <div id="growthTrend" style="margin-top:16px"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title"><span class="section-num num-red">5</span> ნდობა და უსაფრთხოება</span>
+        </div>
+        <div id="trustContent"></div>
+      </div>
+    </div>
+
+    <!-- 6. Editorial -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title"><span class="section-num num-teal">6</span> სარედაქციო ინტელიჯენსი</span>
+      </div>
+      <div class="cols-2">
+        <div>
+          <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">თემების ეფექტურობა</h4>
+          <table class="data-table" id="topicsTable">
+            <thead><tr><th>თემა</th><th class="num">პოსტები</th><th class="num">საშ. ჩართ.</th><th class="num">Share %</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div>
+          <h4 style="font-size:13px; color:#94a3b8; margin-bottom:10px">საუკეთესო დრო</h4>
+          <div id="bestTimeContent"></div>
+          <div class="time-grid" id="timeGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top & Bottom posts -->
+    <div class="cols-2">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">🏆 ტოპ პოსტები</span>
+        </div>
+        <div id="topPostsList"></div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">📉 სუსტი პოსტები</span>
+        </div>
+        <div id="bottomPostsList"></div>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📋 რეკომენდაციები</span>
+      </div>
+      <ul class="rec-list" id="recList"></ul>
+    </div>
+
+    <!-- Unavailable metrics -->
+    <div id="unavailSection" class="section" style="display:none">
+      <div class="section-header">
+        <span class="section-title">⚠️ მიუწვდომელი მეტრიკები</span>
+      </div>
+      <div class="unavail-list" id="unavailList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let currentPeriod = 'weekly';
+let reportData = null;
+
+function fmtNum(n) {
+  n = parseInt(n || 0);
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toLocaleString('ka-GE');
+}
+
+function trendClass(val) {
+  if (val > 0) return 'up';
+  if (val < 0) return 'down';
+  return 'neutral';
+}
+
+function trendArrow(val) {
+  if (val > 0) return '+' + val.toFixed(1) + '%';
+  if (val < 0) return val.toFixed(1) + '%';
+  return '—';
+}
+
+function switchPeriod(el, period) {
+  document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item')[period === 'weekly' ? 0 : 1].classList.add('active');
+  currentPeriod = period;
+  loadReport(period);
+}
+
+function loadReport(period) {
+  currentPeriod = period || currentPeriod;
+  document.getElementById('loadingState').style.display = 'block';
+  document.getElementById('reportContent').style.display = 'none';
+
+  fetch('/api/analytics/' + currentPeriod)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok || !data.report) {
+        document.getElementById('loadingState').innerHTML =
+          '<p style="color:#f87171">რეპორტი ჯერ არ გენერირებულა.</p>' +
+          '<button class="btn btn-primary" style="margin-top:16px" onclick="generateReport()">📊 გენერირება</button>';
+        return;
+      }
+      reportData = data.report;
+      renderReport(reportData);
+    })
+    .catch(err => {
+      document.getElementById('loadingState').innerHTML =
+        '<p style="color:#f87171">შეცდომა: ' + err.message + '</p>';
+    });
+}
+
+function generateReport() {
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true;
+  btn.textContent = '⏳ გენერირდება...';
+
+  fetch('/api/analytics/test-' + currentPeriod)
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = '📊 ახალი რეპორტი';
+      if (data.ok) {
+        loadReport(currentPeriod);
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = '📊 ახალი რეპორტი';
+    });
+}
+
+function refreshData() {
+  loadReport(currentPeriod);
+}
+
+function renderReport(r) {
+  const period = r.period || {};
+  document.getElementById('pageTitle').textContent =
+    currentPeriod === 'weekly' ? 'კვირის ანალიტიკა' : 'თვის სტრატეგიული ანალიტიკა';
+  document.getElementById('pageSub').textContent =
+    'პერიოდი: ' + (period.since || '—') + ' — ' + (period.until || '—') +
+    ' | განახლდა: ' + (r.computed_at || '').slice(0, 16).replace('T', ' ');
+
+  const dist = r.distribution || {};
+  const att = r.attention || {};
+  const eng = r.engagement || {};
+  const aud = r.audience || {};
+  const trust = r.trust || {};
+  const editorial = r.editorial || {};
+
+  // KPI cards
+  const kpis = [
+    { label: 'მიღწევა', value: fmtNum(dist.total_reach), sub: 'Reach', color: '#1877f2' },
+    { label: 'შთაბეჭდილებები', value: fmtNum(dist.total_impressions), sub: 'Impressions', color: '#60a5fa' },
+    { label: 'ჩართულობა', value: (eng.engagement_rate || 0).toFixed(1) + '%', sub: 'Engagement Rate', color: '#f59e0b' },
+    { label: 'პოსტები', value: dist.total_posts || 0, sub: 'Total Posts', color: '#8b5cf6' },
+    { label: 'მიმდევრები', value: (aud.net_growth >= 0 ? '+' : '') + (aud.net_growth || 0), sub: 'Net Growth', color: aud.net_growth >= 0 ? '#4ade80' : '#f87171' },
+    { label: 'ნეგატიური', value: (trust.negative_rate || 0).toFixed(1) + '%', sub: 'Negative Rate', color: trust.negative_rate > 1.5 ? '#f87171' : '#4ade80' },
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k =>
+    '<div class="kpi-card">' +
+    '<div class="kpi-label">' + k.label + '</div>' +
+    '<div class="kpi-value" style="color:' + k.color + '">' + k.value + '</div>' +
+    '<div class="kpi-sub">' + k.sub + '</div></div>'
+  ).join('');
+
+  // Distribution
+  document.getElementById('distBadge').textContent = (dist.total_posts || 0) + ' პოსტი';
+  document.getElementById('distStats').innerHTML =
+    statItem('მიღწევა', fmtNum(dist.total_reach)) +
+    statItem('შთაბეჭდილებები', fmtNum(dist.total_impressions)) +
+    statItem('სიხშირე', (dist.frequency || 0).toFixed(2)) +
+    statItem('პოსტები', dist.total_posts || 0);
+
+  const byType = dist.by_content_type || {};
+  const typeKeys = Object.keys(byType);
+  if (typeKeys.length) {
+    const colors = { photo: 'tag-blue', video: 'tag-purple', link: 'tag-green', status: 'tag-gray', reel: 'tag-yellow' };
+    document.getElementById('contentTypeBreakdown').innerHTML =
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      typeKeys.map(t => '<span class="tag ' + (colors[t] || 'tag-gray') + '">' + t + ': ' + byType[t].count + '</span>').join('') +
+      '</div>';
+  } else {
+    document.getElementById('contentTypeBreakdown').innerHTML = '';
+  }
+
+  // Attention
+  document.getElementById('attStats').innerHTML =
+    statItem('კლიკები', fmtNum(att.total_clicks)) +
+    statItem('CTR', (att.ctr || 0).toFixed(1) + '%') +
+    statItem('ვიდეო პოსტები', att.video_posts_count || 0) +
+    statItem('ვიდეო ნახვები', fmtNum(att.video_views));
+
+  // Engagement
+  document.getElementById('engStats').innerHTML =
+    statItem('👍 ლაიქები', fmtNum(eng.total_likes)) +
+    statItem('💬 კომენტარები', fmtNum(eng.total_comments)) +
+    statItem('🔄 გაზიარებები', fmtNum(eng.total_shares)) +
+    statItem('📈 Eng. Rate', (eng.engagement_rate || 0).toFixed(1) + '%') +
+    statItem('📤 Share Rate', (eng.share_rate || 0).toFixed(1) + '%') +
+    statItem('საშუალო', (eng.avg_engagement_per_post || 0).toFixed(1));
+
+  const rx = eng.reactions || {};
+  const rxItems = [
+    { emoji: '❤️', key: 'love' }, { emoji: '😂', key: 'haha' },
+    { emoji: '😮', key: 'wow' }, { emoji: '😢', key: 'sad' }, { emoji: '😠', key: 'angry' }
+  ];
+  document.getElementById('reactionsRow').innerHTML = rxItems.map(r =>
+    '<div class="rx-badge">' + r.emoji + ' <span class="rx-count">' + (rx[r.key] || 0) + '</span></div>'
+  ).join('');
+
+  // Audience
+  document.getElementById('audStats').innerHTML =
+    statItem('ახალი', '+' + (aud.new_followers || 0)) +
+    statItem('წასული', '-' + (aud.unfollows || 0)) +
+    statItem('წმინდა', (aud.net_growth >= 0 ? '+' : '') + (aud.net_growth || 0));
+
+  const daily = aud.daily_trend || [];
+  if (daily.length) {
+    const maxNet = Math.max(...daily.map(d => Math.abs(d.net)), 1);
+    document.getElementById('growthTrend').innerHTML =
+      '<div style="display:flex;gap:4px;align-items:flex-end;height:60px">' +
+      daily.map(d => {
+        const h = Math.max(4, Math.abs(d.net) / maxNet * 50);
+        const color = d.net >= 0 ? '#4ade80' : '#f87171';
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center">' +
+          '<div style="width:100%;height:' + h + 'px;background:' + color + ';border-radius:3px;min-width:4px"></div>' +
+          '<span style="font-size:9px;color:#475569;margin-top:2px">' + (d.date || '').slice(5) + '</span></div>';
+      }).join('') + '</div>';
+  } else {
+    document.getElementById('growthTrend').innerHTML = '<p style="color:#475569;font-size:12px">მონაცემები არ არის</p>';
+  }
+
+  // Trust
+  const sent = trust.sentiment || {};
+  let trustHTML = '<div class="stat-grid">' +
+    statItem('ნეგატიური', fmtNum(trust.negative_feedback)) +
+    statItem('ნეგ. %', (trust.negative_rate || 0).toFixed(1) + '%') +
+    '</div>';
+
+  if (sent.available) {
+    trustHTML += '<div style="margin-top:16px"><div style="font-size:12px;color:#94a3b8;margin-bottom:6px">სენტიმენტი (' + sent.total + ' კომენტარი)</div>';
+    trustHTML += '<div class="sentiment-bar">' +
+      '<div class="sent-pos" style="width:' + (sent.positive_pct || 0) + '%"></div>' +
+      '<div class="sent-neu" style="width:' + (sent.neutral_pct || 0) + '%"></div>' +
+      '<div class="sent-neg" style="width:' + (sent.negative_pct || 0) + '%"></div></div>';
+    trustHTML += '<div style="display:flex;justify-content:space-between;font-size:11px">' +
+      '<span style="color:#4ade80">✅ ' + sent.positive_pct + '%</span>' +
+      '<span style="color:#64748b">➖ ' + sent.neutral_pct + '%</span>' +
+      '<span style="color:#f87171">⚠️ ' + sent.negative_pct + '%</span></div></div>';
+  } else {
+    trustHTML += '<div class="alert alert-info" style="margin-top:12px">სენტიმენტი მიუწვდომელი (კომენტარები არ მოიძებნა)</div>';
+  }
+
+  if (trust.alert) {
+    trustHTML += '<div class="alert alert-danger">⚠️ ' + trust.alert + '</div>';
+  }
+
+  const negTypes = trust.negative_by_type || {};
+  const negKeys = Object.keys(negTypes);
+  if (negKeys.length) {
+    trustHTML += '<div style="margin-top:12px">';
+    negKeys.forEach(k => {
+      trustHTML += '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px">' + k + ': ' + negTypes[k] + '</div>';
+    });
+    trustHTML += '</div>';
+  }
+  document.getElementById('trustContent').innerHTML = trustHTML;
+
+  // Editorial — Topics
+  const topics = editorial.topics || {};
+  const topicKeys = Object.keys(topics);
+  const topicColors = ['tag-blue', 'tag-green', 'tag-purple', 'tag-yellow', 'tag-red', 'tag-gray'];
+  const tbody = document.querySelector('#topicsTable tbody');
+  tbody.innerHTML = topicKeys.length ? topicKeys.map((t, i) => {
+    const d = topics[t];
+    return '<tr><td><span class="tag ' + topicColors[i % topicColors.length] + '">' + t + '</span></td>' +
+      '<td class="num">' + d.count + '</td>' +
+      '<td class="num highlight">' + (d.avg_engagement || 0).toFixed(1) + '</td>' +
+      '<td class="num">' + (d.share_rate || 0).toFixed(1) + '%</td></tr>';
+  }).join('') : '<tr><td colspan="4" style="color:#475569;text-align:center">თემები ვერ მოიძებნა</td></tr>';
+
+  // Editorial — Best time
+  const times = editorial.best_posting_times || {};
+  let timeHTML = '';
+  if (times.best_hour !== null && times.best_hour !== undefined) {
+    timeHTML += '<div style="margin-bottom:12px">' +
+      '<span style="font-size:20px;font-weight:700;color:#1877f2">' + String(times.best_hour).padStart(2, '0') + ':00</span>' +
+      '<span style="color:#94a3b8;font-size:13px;margin-left:8px">საუკეთესო საათი</span></div>';
+  }
+  if (times.best_day) {
+    timeHTML += '<div style="margin-bottom:12px">' +
+      '<span style="font-size:16px;font-weight:600;color:#4ade80">' + times.best_day + '</span>' +
+      '<span style="color:#94a3b8;font-size:13px;margin-left:8px">საუკეთესო დღე</span></div>';
+  }
+  document.getElementById('bestTimeContent').innerHTML = timeHTML || '<p style="color:#475569;font-size:12px">მონაცემები არ არის</p>';
+
+  // Time heatmap
+  const byHour = times.by_hour || {};
+  const hourKeys = Object.keys(byHour).map(Number).sort((a, b) => a - b);
+  if (hourKeys.length) {
+    const maxEng = Math.max(...hourKeys.map(h => byHour[h].avg_engagement || 0), 1);
+    document.getElementById('timeGrid').innerHTML = Array.from({length: 24}, (_, h) => {
+      const d = byHour[h];
+      let cls = '';
+      if (d) {
+        const ratio = (d.avg_engagement || 0) / maxEng;
+        cls = ratio > 0.7 ? 'hot' : ratio > 0.3 ? 'warm' : '';
+      }
+      return '<div class="time-cell ' + cls + '">' + h + '</div>';
+    }).join('');
+  } else {
+    document.getElementById('timeGrid').innerHTML = '';
+  }
+
+  // Top & Bottom posts
+  document.getElementById('topPostsList').innerHTML = renderPostsList(r.top_posts || [], '🏆');
+  document.getElementById('bottomPostsList').innerHTML = renderPostsList(r.bottom_posts || [], '📉');
+
+  // Recommendations
+  const recs = r.recommendations || [];
+  document.getElementById('recList').innerHTML = recs.length ?
+    recs.map((rec, i) => '<li class="rec-item"><span class="rec-num">' + (i + 1) + '</span><span>' + rec + '</span></li>').join('') :
+    '<li style="color:#475569;font-size:13px">რეკომენდაციები არ არის</li>';
+
+  // Unavailable
+  const unavail = r.unavailable_metrics || [];
+  if (unavail.length) {
+    document.getElementById('unavailSection').style.display = 'block';
+    document.getElementById('unavailList').innerHTML = unavail.map(m => '<div class="unavail-item">' + m + '</div>').join('');
+  } else {
+    document.getElementById('unavailSection').style.display = 'none';
+  }
+
+  // Show content
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('reportContent').style.display = 'block';
+}
+
+function statItem(label, value) {
+  return '<div class="stat-item"><div class="stat-val">' + value + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+function renderPostsList(posts, icon) {
+  if (!posts.length) return '<p style="color:#475569;font-size:13px">პოსტები არ მოიძებნა</p>';
+  return posts.map((p, i) => {
+    const msg = (p.message || '').slice(0, 70) + ((p.message || '').length > 70 ? '...' : '');
+    const topicTag = p.topic ? '<span class="tag tag-blue" style="margin-left:6px">' + p.topic + '</span>' : '';
+    return '<div style="padding:12px;background:#1a1d2e;border-radius:8px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<span style="font-size:13px;font-weight:600;color:#e2e8f0">' + icon + ' ' + (i + 1) + '. ' + (msg || '(უსათაურო)') + '</span>' +
+      topicTag + '</div>' +
+      '<div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:#94a3b8">' +
+      '<span>👍 ' + (p.likes || 0) + '</span>' +
+      '<span>💬 ' + (p.comments || 0) + '</span>' +
+      '<span>🔄 ' + (p.shares || 0) + '</span>' +
+      '<span>📊 reach: ' + fmtNum(p.reach) + '</span>' +
+      '<span style="color:#1877f2;font-weight:600">eng: ' + (p.engagement_rate || 0).toFixed(1) + '%</span>' +
+      '</div></div>';
+  }).join('');
+}
+
+// Load on start
+loadReport('weekly');
+</script>
+</body>
+</html>"""

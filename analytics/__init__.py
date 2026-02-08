@@ -28,7 +28,15 @@ async def setup_analytics(app):
 
     Registers API endpoints + starts background scheduling loops.
     """
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import HTMLResponse, JSONResponse
+    from analytics.dashboard import ANALYTICS_HTML
+
+    # -----------------------------------------------------------------------
+    # Dashboard UI
+    # -----------------------------------------------------------------------
+    @app.get("/analytics", response_class=HTMLResponse)
+    async def analytics_dashboard():
+        return ANALYTICS_HTML
 
     # -----------------------------------------------------------------------
     # API endpoints
