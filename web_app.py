@@ -362,7 +362,7 @@ DASHBOARD = """<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <h1>News Card Bot <button class="flow-btn" onclick="toggleFlow()">⚡ FLOW</button></h1>
+  <h1>News Card Bot <button class="flow-btn" onclick="toggleFlow()">⚡ FLOW</button> <a href="/analytics" class="flow-btn" style="text-decoration:none">📊 Analytics</a></h1>
   <p class="sub">BBC / CNN style news cards — Web &amp; Telegram</p>
 
   <div class="stats">
