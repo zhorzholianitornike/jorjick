@@ -151,138 +151,189 @@ DASHBOARD = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>News Card Bot</title>
 <style>
-  *            { margin:0; padding:0; box-sizing:border-box; }
-  body         { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-                 background:#0f1117; color:#e2e8f0; min-height:100vh; padding:36px 20px; }
-  .wrap        { max-width:860px; margin:0 auto; }
-  h1           { font-size:26px; color:#fff; }
-  .sub         { color:#64748b; font-size:13px; margin-bottom:28px; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:#0f1117; color:#e2e8f0; min-height:100vh; }
 
-  /* status bar */
-  .stats       { display:flex; gap:12px; margin-bottom:28px; }
-  .stat        { flex:1; background:#1e2030; border:1px solid #2d3148; border-radius:10px;
-                 padding:14px 18px; }
-  .stat .lbl   { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; }
-  .stat .val   { font-size:20px; font-weight:600; margin-top:3px; }
-  .green       { color:#4ade80; }
+  /* ── Sidebar ── */
+  .sidebar {
+    position:fixed; left:0; top:0; bottom:0; width:260px;
+    background:#151620; border-right:1px solid #2d3148;
+    display:flex; flex-direction:column; z-index:100;
+  }
+  .sidebar-brand { padding:28px 24px 20px; border-bottom:1px solid #2d3148; }
+  .sidebar-brand h1 {
+    font-size:18px; font-weight:700; color:#fff;
+    display:flex; align-items:center; gap:10px;
+  }
+  .sidebar-brand h1 .logo-icon {
+    width:36px; height:36px; border-radius:10px;
+    background:linear-gradient(135deg,#1877f2,#0c277d);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; color:#fff;
+  }
+  .sidebar-brand p { font-size:12px; color:#64748b; margin-top:4px; }
+  .sidebar-nav { padding:16px 12px; flex:1; overflow-y:auto; }
+  .nav-section { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:1px; padding:12px 12px 8px; }
+  .nav-item {
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border-radius:8px; cursor:pointer;
+    color:#94a3b8; font-size:14px; transition:all 0.15s; text-decoration:none;
+  }
+  .nav-item:hover { background:#1e2030; color:#e2e8f0; }
+  .nav-item.active { background:#1877f2; color:#fff; }
+  .nav-icon { font-size:16px; width:20px; text-align:center; }
+  .sidebar-footer { padding:16px 24px; border-top:1px solid #2d3148; font-size:12px; color:#475569; }
 
-  /* form panel */
-  .panel       { background:#1e2030; border:1px solid #2d3148; border-radius:12px;
-                 padding:24px; margin-bottom:28px; }
-  .panel h2   { font-size:16px; color:#fff; margin-bottom:18px; }
+  /* ── Main content ── */
+  .main { margin-left:260px; padding:32px; }
 
-  /* upload zone */
-  .drop        { border:2px dashed #2d3148; border-radius:9px; padding:28px; text-align:center;
-                 cursor:pointer; transition:border-color .2s, background .2s; }
-  .drop:hover, .drop.over { border-color:#1e94b9; background:#151620; }
-  .drop .ico   { font-size:26px; }
-  .drop p      { color:#64748b; font-size:13px; margin-top:6px; }
-  .drop img    { max-width:180px; max-height:120px; border-radius:7px; margin-top:10px; display:none; }
+  /* ── Page header ── */
+  .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; }
+  .page-header h2 { font-size:28px; font-weight:700; color:#fff; }
+  .page-header p { color:#94a3b8; font-size:14px; margin-top:4px; }
 
-  /* inputs */
-  .row         { display:flex; gap:14px; margin-top:14px; }
-  .row label   { display:block; font-size:12px; color:#94a3b8; margin-bottom:5px; }
-  .row .g      { flex:1; }
+  /* ── Views ── */
+  .view { display:none; }
+  .view.active { display:block; }
+
+  /* ── Status cards ── */
+  .stats { display:flex; gap:14px; margin-bottom:28px; }
+  .stat {
+    flex:1; background:#151620; border:1px solid #2d3148; border-radius:12px;
+    padding:20px;
+  }
+  .stat .lbl { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.5px; }
+  .stat .val { font-size:22px; font-weight:700; margin-top:6px; color:#fff; }
+  .green { color:#4ade80; }
+
+  /* ── Section (panel) ── */
+  .section {
+    background:#151620; border:1px solid #2d3148; border-radius:12px;
+    padding:24px; margin-bottom:20px;
+  }
+  .section h2 { font-size:16px; font-weight:600; color:#fff; margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+
+  /* ── Upload zone ── */
+  .drop { border:2px dashed #2d3148; border-radius:9px; padding:28px; text-align:center;
+           cursor:pointer; transition:border-color .2s, background .2s; }
+  .drop:hover, .drop.over { border-color:#1877f2; background:#1a1d2e; }
+  .drop .ico { font-size:26px; }
+  .drop p { color:#64748b; font-size:13px; margin-top:6px; }
+  .drop img { max-width:180px; max-height:120px; border-radius:7px; margin-top:10px; display:none; }
+
+  /* ── Inputs ── */
+  .row { display:flex; gap:14px; margin-top:14px; }
+  .row label { display:block; font-size:12px; color:#94a3b8; margin-bottom:5px; }
+  .row .g { flex:1; }
   .row input, .row textarea {
-                 width:100%; background:#151620; border:1px solid #2d3148; border-radius:7px;
-                 padding:9px 12px; color:#e2e8f0; font-size:14px; outline:none;
-                 transition:border-color .2s; font-family:inherit; }
-  .row input:focus, .row textarea:focus { border-color:#1e94b9; }
+    width:100%; background:#1a1d2e; border:1px solid #2d3148; border-radius:8px;
+    padding:10px 14px; color:#e2e8f0; font-size:14px; outline:none;
+    transition:border-color .2s; font-family:inherit;
+  }
+  .row input:focus, .row textarea:focus { border-color:#1877f2; }
   .row textarea { min-height:64px; resize:vertical; }
 
-  /* buttons */
-  .btn         { margin-top:18px; width:100%; padding:11px; background:#1e94b9; color:#fff;
-                 border:none; border-radius:7px; font-size:15px; font-weight:600;
-                 cursor:pointer; transition:background .2s; }
-  .btn:hover   { background:#1a7fa0; }
-  .btn:disabled{ background:#2d3148; color:#64748b; cursor:not-allowed; }
+  /* ── Buttons ── */
+  .btn {
+    margin-top:18px; width:100%; padding:10px 20px; background:#1877f2; color:#fff;
+    border:none; border-radius:8px; font-size:13px; font-weight:600;
+    cursor:pointer; transition:all .15s; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .btn:hover { background:#1565c0; }
+  .btn:disabled { background:#2d3148; color:#64748b; cursor:not-allowed; }
 
-  /* spinner */
-  .spin        { width:32px; height:32px; border:3px solid #2d3148; border-top-color:#1e94b9;
-                 border-radius:50%; animation:sp .5s linear infinite; margin:18px auto; display:none; }
-  @keyframes sp{ to{ transform:rotate(360deg); } }
+  /* ── Spinner ── */
+  .spin { width:32px; height:32px; border:3px solid #2d3148; border-top-color:#1877f2;
+           border-radius:50%; animation:sp .8s linear infinite; margin:18px auto; display:none; }
+  @keyframes sp { to { transform:rotate(360deg); } }
 
-  /* result */
-  .result      { text-align:center; margin-top:16px; display:none; }
-  .result img  { max-width:100%; border-radius:9px; border:1px solid #2d3148; }
-  .dl          { display:inline-block; margin-top:10px; color:#1e94b9; font-size:13px;
-                 cursor:pointer; text-decoration:none; }
-  .dl:hover    { text-decoration:underline; }
+  /* ── Result ── */
+  .result { text-align:center; margin-top:16px; display:none; }
+  .result img { max-width:100%; border-radius:12px; border:1px solid #2d3148; }
+  .dl { display:inline-block; margin-top:10px; color:#1877f2; font-size:13px;
+        cursor:pointer; text-decoration:none; }
+  .dl:hover { text-decoration:underline; }
 
-  /* facebook button */
-  .btn-fb      { margin-top:12px; padding:10px 20px; background:#1877f2; color:#fff;
-                 border:none; border-radius:7px; font-size:14px; font-weight:600;
-                 cursor:pointer; transition:background .2s; }
-  .btn-fb:hover{ background:#166fe5; }
+  /* ── Facebook button ── */
+  .btn-fb {
+    margin-top:12px; padding:10px 20px; background:#1877f2; color:#fff;
+    border:none; border-radius:8px; font-size:14px; font-weight:600;
+    cursor:pointer; transition:background .2s;
+  }
+  .btn-fb:hover { background:#1565c0; }
   .btn-fb:disabled { background:#2d3148; color:#64748b; cursor:not-allowed; }
   .btn-fb.done { background:#4ade80; }
   .btn-fb.fail { background:#ef4444; }
 
-  /* toast */
-  .toast       { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
-                 background:#ef4444; color:#fff; padding:12px 22px; border-radius:8px;
-                 font-size:14px; display:none; z-index:99; }
+  /* ── Toast ── */
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+           background:#ef4444; color:#fff; padding:12px 22px; border-radius:8px;
+           font-size:14px; display:none; z-index:200; }
   .toast.success { background:#16a34a; }
 
-  /* photo library */
-  .lib-label   { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; display:flex; align-items:center; justify-content:space-between; }
-  .lib-upload-btn { padding:5px 12px; background:#2d3148; color:#94a3b8; border:1px solid #3d4158;
-                 border-radius:5px; font-size:11px; cursor:pointer; transition:all .2s; }
-  .lib-upload-btn:hover { background:#3d4158; color:#e2e8f0; border-color:#4d5168; }
-  .lib-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
-  .lib-item    { text-align:center; position:relative; }
-  .lib-item img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
-                 border:2px solid transparent; transition:border-color .2s, transform .1s; cursor:pointer; }
-  .lib-item:hover img { border-color:#1e94b9; transform:scale(1.02); }
+  /* ── Photo library ── */
+  .lib-label { font-size:12px; color:#94a3b8; margin:16px 0 8px 0; display:flex; align-items:center; justify-content:space-between; }
+  .lib-upload-btn {
+    padding:5px 12px; background:#1e2030; color:#94a3b8; border:1px solid #2d3148;
+    border-radius:6px; font-size:11px; cursor:pointer; transition:all .2s;
+  }
+  .lib-upload-btn:hover { background:#2d3148; color:#e2e8f0; }
+  .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
+  .lib-item { text-align:center; position:relative; }
+  .lib-item img {
+    width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px;
+    border:2px solid transparent; transition:border-color .2s, transform .1s; cursor:pointer;
+  }
+  .lib-item:hover img { border-color:#1877f2; transform:scale(1.02); }
   .lib-item.selected img { border-color:#4ade80; box-shadow:0 0 0 2px rgba(74,222,128,0.3); }
   .lib-item .lib-name { font-size:10px; color:#94a3b8; margin-top:4px; overflow:hidden;
                  text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
   .lib-actions { position:absolute; top:4px; right:4px; display:flex; gap:4px; z-index:10; }
-  .lib-action-btn { width:24px; height:24px; border-radius:4px; border:none; cursor:pointer;
-                 font-size:12px; display:flex; align-items:center; justify-content:center;
-                 transition:all .2s; box-shadow:0 2px 4px rgba(0,0,0,0.3); }
-  .lib-action-btn.rename { background:rgba(30,148,185,0.9); color:#fff; }
-  .lib-action-btn.rename:hover { background:rgba(30,148,185,1); }
+  .lib-action-btn {
+    width:24px; height:24px; border-radius:6px; border:none; cursor:pointer;
+    font-size:12px; display:flex; align-items:center; justify-content:center;
+    transition:all .2s; box-shadow:0 2px 4px rgba(0,0,0,0.3);
+  }
+  .lib-action-btn.rename { background:rgba(24,119,242,0.9); color:#fff; }
+  .lib-action-btn.rename:hover { background:rgba(24,119,242,1); }
   .lib-action-btn.delete { background:rgba(239,68,68,0.9); color:#fff; }
   .lib-action-btn.delete:hover { background:rgba(239,68,68,1); }
-  .lib-empty   { color:#64748b; font-size:12px; text-align:center; padding:20px;
-                 background:#151620; border-radius:6px; }
-  .or-divider  { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
+  .lib-empty { color:#64748b; font-size:12px; text-align:center; padding:20px;
+               background:#1a1d2e; border-radius:8px; }
+  .or-divider { text-align:center; color:#64748b; font-size:12px; margin:12px 0; }
 
-  /* flow button */
-  .flow-btn    { padding:6px 16px; background:#2d3148; color:#94a3b8; border:1px solid #3d4158;
-                 border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;
-                 transition:all .2s; margin-left:12px; vertical-align:middle; }
-  .flow-btn:hover { background:#3d4158; color:#fff; border-color:#1e94b9; }
-
-  /* flow overlay */
-  .flow-overlay { position:fixed; inset:0; background:rgba(10,12,20,0.95); z-index:100;
+  /* ── Flow overlay ── */
+  .flow-overlay { position:fixed; inset:0; background:rgba(10,12,20,0.95); z-index:150;
                   display:none; overflow:auto; }
   .flow-overlay.open { display:block; }
   .flow-header { display:flex; justify-content:space-between; align-items:center;
                  padding:20px 30px; border-bottom:1px solid #2d3148; }
   .flow-header h2 { font-size:20px; color:#fff; }
-  .flow-close  { width:36px; height:36px; border-radius:8px; border:1px solid #3d4158;
-                 background:#1e2030; color:#94a3b8; font-size:18px; cursor:pointer;
-                 display:flex; align-items:center; justify-content:center; transition:all .2s; }
+  .flow-close {
+    width:36px; height:36px; border-radius:8px; border:1px solid #2d3148;
+    background:#1e2030; color:#94a3b8; font-size:18px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:all .2s;
+  }
   .flow-close:hover { background:#ef4444; color:#fff; border-color:#ef4444; }
 
-  /* flow canvas */
+  /* ── Flow canvas ── */
   .flow-canvas { position:relative; min-height:1200px; padding:40px; min-width:1200px; }
 
-  /* flow nodes */
-  .fnode        { position:absolute; width:160px; background:#1e2030; border:1px solid #2d3148;
-                  border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.3);
-                  transition:transform .15s, box-shadow .15s; }
-  .fnode:hover  { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.5); }
-  .fnode-head   { padding:8px 12px; font-size:11px; font-weight:700; text-transform:uppercase;
-                  letter-spacing:.5px; }
-  .fnode-body   { padding:10px 12px; }
-  .fnode-icon   { font-size:20px; margin-bottom:4px; }
-  .fnode-name   { font-size:12px; font-weight:600; color:#fff; }
-  .fnode-desc   { font-size:10px; color:#64748b; margin-top:2px; }
+  /* ── Flow nodes ── */
+  .fnode {
+    position:absolute; width:160px; background:#1e2030; border:1px solid #2d3148;
+    border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.3);
+    transition:transform .15s, box-shadow .15s;
+  }
+  .fnode:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  .fnode-head { padding:8px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+  .fnode-body { padding:10px 12px; }
+  .fnode-icon { font-size:20px; margin-bottom:4px; }
+  .fnode-name { font-size:12px; font-weight:600; color:#fff; }
+  .fnode-desc { font-size:10px; color:#64748b; margin-top:2px; }
 
-  /* node colors */
+  /* ── Node colors ── */
   .fnode-blue .fnode-head   { background:#1e3a5f; color:#60a5fa; }
   .fnode-green .fnode-head  { background:#14532d; color:#4ade80; }
   .fnode-orange .fnode-head { background:#431407; color:#fb923c; }
@@ -290,35 +341,67 @@ DASHBOARD = """<!DOCTYPE html>
   .fnode-red .fnode-head    { background:#450a0a; color:#f87171; }
   .fnode-cyan .fnode-head   { background:#083344; color:#22d3ee; }
 
-  /* flow lines SVG */
-  .flow-svg     { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
-  .flow-line    { fill:none; stroke:#3d4158; stroke-width:2; }
-  .flow-line-active { stroke:#1e94b9; stroke-dasharray:6 4; animation:flowdash 1s linear infinite; }
+  /* ── Flow lines SVG ── */
+  .flow-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  .flow-line { fill:none; stroke:#3d4158; stroke-width:2; }
+  .flow-line-active { stroke:#1877f2; stroke-dasharray:6 4; animation:flowdash 1s linear infinite; }
   @keyframes flowdash { to { stroke-dashoffset:-10; } }
 
-  /* flow legend */
-  .flow-legend  { display:flex; gap:16px; padding:16px 30px; border-top:1px solid #2d3148;
-                  flex-wrap:wrap; }
+  /* ── Flow legend ── */
+  .flow-legend { display:flex; gap:16px; padding:16px 30px; border-top:1px solid #2d3148; flex-wrap:wrap; }
   .flow-leg-item { display:flex; align-items:center; gap:6px; font-size:11px; color:#94a3b8; }
   .flow-leg-dot { width:10px; height:10px; border-radius:3px; }
 
-  /* history grid */
-  .history h2  { font-size:16px; color:#fff; margin-bottom:14px; }
-  .hgrid       { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
-  .hcard       { background:#1e2030; border:1px solid #2d3148; border-radius:9px;
-                 overflow:hidden; cursor:pointer; transition:border-color .2s; }
-  .hcard:hover { border-color:#1e94b9; }
-  .hcard img   { width:100%; display:block; }
-  .hcard .inf  { padding:9px 11px; }
+  /* ── History grid ── */
+  .history h2 { font-size:16px; color:#fff; margin-bottom:14px; }
+  .hgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
+  .hcard {
+    background:#151620; border:1px solid #2d3148; border-radius:12px;
+    overflow:hidden; cursor:pointer; transition:border-color .2s;
+  }
+  .hcard:hover { border-color:#1877f2; }
+  .hcard img { width:100%; display:block; }
+  .hcard .inf { padding:10px 12px; }
   .hcard .inf .n { font-size:13px; font-weight:600; color:#fff; }
   .hcard .inf .t { font-size:11px; color:#64748b; margin-top:2px; }
+
+  /* ── Responsive ── */
+  @media (max-width:900px) {
+    .sidebar { display:none; }
+    .main { margin-left:0; padding:16px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>News Card Bot <button class="flow-btn" onclick="toggleFlow()">⚡ FLOW</button> <a href="/analytics" class="flow-btn" style="text-decoration:none">📊 Analytics</a></h1>
-  <p class="sub">BBC / CNN style news cards — Web &amp; Telegram</p>
 
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <h1><span class="logo-icon">📰</span> News Card Bot</h1>
+    <p>Crea Communication</p>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section">ინსტრუმენტები</div>
+    <a class="nav-item active" data-nav="card" onclick="showView('card')"><span class="nav-icon">🃏</span> ქარდის შექმნა</a>
+    <a class="nav-item" data-nav="auto" onclick="showView('auto')"><span class="nav-icon">🤖</span> ავტო ქარდი</a>
+    <a class="nav-item" data-nav="voice" onclick="showView('voice')"><span class="nav-icon">🎙️</span> ხმოვანი გენერაცია</a>
+
+    <div class="nav-section">ავტომატიზაცია</div>
+    <a class="nav-item" data-nav="news" onclick="showView('news')"><span class="nav-icon">📰</span> ავტო-სიახლეები</a>
+    <a class="nav-item" data-nav="rss" onclick="showView('rss')"><span class="nav-icon">📡</span> RSS წყაროები</a>
+
+    <div class="nav-section">ნავიგაცია</div>
+    <a class="nav-item" data-nav="history" onclick="showView('history')"><span class="nav-icon">🖼️</span> ბოლო ქარდები</a>
+    <a class="nav-item" onclick="toggleFlow()"><span class="nav-icon">⚡</span> FLOW</a>
+    <a class="nav-item" href="/analytics"><span class="nav-icon">📊</span> ანალიტიკა</a>
+  </div>
+  <div class="sidebar-footer">● News Card Bot v3.0</div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Status cards -->
   <div class="stats">
     <div class="stat">
       <div class="lbl">Telegram</div>
@@ -330,215 +413,232 @@ DASHBOARD = """<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- generate form -->
-  <div class="panel">
-    <h2>1 — ქარდის შექმნა</h2>
-
-    <div class="lib-label">
-      <span>📁 ფოტო ბიბლიოთეკა</span>
-      <button class="lib-upload-btn" onclick="document.getElementById('lib-fi').click()">📤 ფოტო ატვირთე</button>
-      <input type="file" id="lib-fi" accept="image/*" style="display:none">
+  <!-- ═══════════════ VIEW: Card ═══════════════ -->
+  <div id="viewCard" class="view active">
+    <div class="page-header">
+      <div><h2>ქარდის შექმნა</h2><p>ფოტო + ტექსტი → News Card → Facebook</p></div>
     </div>
-    <div class="lib-grid" id="lib-grid">
-      <div class="lib-empty">ფოტოები არ არის</div>
-    </div>
-
-    <div class="or-divider">— ან ატვირთე ახალი —</div>
-
-    <div class="drop" id="drop">
-      <div class="ico">📷</div>
-      <p>ფოტოს ატვირთვა</p>
-      <input type="file" id="fi" accept="image/*" style="display:none">
-      <img id="prev" alt="">
-    </div>
-
-    <div class="row">
-      <div class="g"><label>სახელი</label>
-        <input id="inp-name" placeholder="სახელი გვარი">
+    <div class="section">
+      <div class="lib-label">
+        <span>📁 ფოტო ბიბლიოთეკა</span>
+        <button class="lib-upload-btn" onclick="document.getElementById('lib-fi').click()">📤 ფოტო ატვირთე</button>
+        <input type="file" id="lib-fi" accept="image/*" style="display:none">
       </div>
-    </div>
-    <div class="row">
-      <div class="g"><label>ტექსტი</label>
-        <textarea id="inp-text" placeholder="ტექსტი..."></textarea>
+      <div class="lib-grid" id="lib-grid">
+        <div class="lib-empty">ფოტოები არ არის</div>
       </div>
-    </div>
 
-    <button class="btn" id="btn-gen" onclick="gen()">ქარდის გენერაცია</button>
-    <div class="spin" id="spin"></div>
+      <div class="or-divider">— ან ატვირთე ახალი —</div>
 
-    <div class="result" id="res">
-      <img id="res-img" alt="">
-      <br>
-      <a class="dl" id="res-dl" href="" download="card.jpg">⬇ Download</a>
-      <br>
-      <button class="btn-fb" id="btn-fb" onclick="uploadFB('res')">📘 Upload to Facebook</button>
-    </div>
-  </div>
-
-  <!-- auto-generate panel -->
-  <div class="panel">
-    <h2>2 — ავტომატური ქარდი <span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">[Tavily + Gemini 3 Flash]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">Tavily Search → Gemini 3 Flash Preview → Card → Facebook</p>
-    <div class="row">
-      <div class="g"><label>თემა</label>
-        <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
+      <div class="drop" id="drop">
+        <div class="ico">📷</div>
+        <p>ფოტოს ატვირთვა</p>
+        <input type="file" id="fi" accept="image/*" style="display:none">
+        <img id="prev" alt="">
       </div>
-    </div>
-    <button class="btn" id="btn-auto" onclick="autoGen()">გენერაცია</button>
-    <div class="spin" id="spin-auto"></div>
-    <div class="result" id="res-auto">
-      <img id="res-auto-img" alt="" style="max-width:400px">
-      <br>
-      <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ Download</a>
-      <br>
-      <button class="btn-fb" id="btn-fb-auto" onclick="uploadFB('res-auto')">📘 Upload to Facebook</button>
-    </div>
-    <div id="auto-article" style="display:none;margin-top:16px;background:#151620;border:1px solid #2d3148;border-radius:8px;padding:20px;">
-      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">სტატია</div>
-      <h3 id="auto-article-title" style="font-size:18px;color:#fff;margin-bottom:12px"></h3>
-      <div id="auto-article-text" style="font-size:14px;color:#cbd5e1;line-height:1.7;white-space:pre-wrap"></div>
-      <button onclick="copyArticle()" style="margin-top:12px;padding:8px 16px;background:#2d3148;color:#94a3b8;border:1px solid #3d4158;border-radius:5px;font-size:12px;cursor:pointer">📋 კოპირება</button>
-    </div>
-    <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#151620;border-radius:6px;padding:8px 12px"></div>
-  </div>
 
-  <!-- voice generation panel -->
-  <div class="panel">
-    <h2>3 — ხმოვანი გენერაცია 🎙️ <span style="font-size:11px;color:#64748b;font-weight:400">[Gemini TTS]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">ქართული ტექსტი → Gemini TTS → WAV Audio</p>
-
-    <div class="row">
-      <div class="g"><label>ტექსტი (ქართულად)</label>
-        <textarea id="inp-voice-text" placeholder="შეიყვანეთ ტექსტი ქართულად...&#10;მაგალითი: გამარჯობა, ეს არის ხმოვანი გენერაცია." style="min-height:100px"></textarea>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="g"><label>ხმა</label>
-        <select id="sel-voice" style="width:100%; background:#151620; border:1px solid #2d3148; border-radius:7px; padding:9px 12px; color:#e2e8f0; font-size:14px;">
-          <option value="Charon">Charon (მამაკაცი - ინფორმატიული)</option>
-          <option value="Kore">Kore (ქალი - მკაფიო)</option>
-          <option value="Puck">Puck (მამაკაცი - ენერგიული)</option>
-          <option value="Fenrir">Fenrir (მამაკაცი - ექსპრესიული)</option>
-        </select>
-      </div>
-    </div>
-
-    <div style="margin-top:8px;font-size:11px;color:#64748b;">
-      <span>სიმბოლოები: </span><span id="char-count">0</span><span> / 5000 (ლიმიტი ერთ voice-over-ზე)</span>
-    </div>
-
-    <button class="btn" id="btn-voice" onclick="generateVoice()">🎙️ ხმის გენერაცია</button>
-    <div class="spin" id="spin-voice"></div>
-
-    <div class="result" id="res-voice">
-      <audio id="audio-player" controls style="width:100%;max-width:400px;margin-top:16px;display:none;"></audio>
-      <br>
-      <a class="dl" id="res-voice-dl" href="" download="voice.wav" style="display:none;">⬇️ Download Audio</a>
-    </div>
-  </div>
-
-  <!-- news auto-scraper control panel -->
-  <div class="panel">
-    <h2>4 — ავტო-სიახლეები 📰 <span style="font-size:11px;color:#64748b;font-weight:400">[interpressnews.ge]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">interpressnews.ge/politika → Telegram დასტური → Facebook</p>
-
-    <div class="row">
-      <div class="g"><label>ინტერვალი (წუთებში)</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="number" id="inp-news-interval" min="5" max="1440" value="15"
-            style="width:100px;background:#151620;border:1px solid #2d3148;border-radius:7px;padding:9px 12px;color:#e2e8f0;font-size:16px;text-align:center;">
-          <span style="color:#64748b;font-size:12px;" id="interval-label">ყოველ 15 წუთში</span>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
-      <button onclick="setNewsInterval(5)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">5 წთ</button>
-      <button onclick="setNewsInterval(15)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">15 წთ</button>
-      <button onclick="setNewsInterval(30)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">30 წთ</button>
-      <button onclick="setNewsInterval(45)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">45 წთ</button>
-      <button onclick="setNewsInterval(60)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">1 სთ</button>
-      <button onclick="setNewsInterval(120)" style="background:#2d3148;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">2 სთ</button>
-    </div>
-
-    <div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="btn" onclick="applyNewsInterval()" style="flex:1;">⏱ ინტერვალის შეცვლა</button>
-      <button class="btn" onclick="sendTestNews()" style="flex:1;background:#1a5c2e;">📰 სატესტო გაგზავნა</button>
-    </div>
-    <div class="spin" id="spin-news"></div>
-    <div class="result" id="res-news"></div>
-  </div>
-
-  <!-- RSS source management panel -->
-  <div class="panel">
-    <h2>5 — RSS წყაროების მართვა 📡 <span style="font-size:11px;color:#64748b;font-weight:400">[International News]</span></h2>
-    <p style="color:#64748b;font-size:12px;margin-bottom:14px">RSS Feeds → Gemini თარგმანი → Telegram დასტური → Facebook</p>
-
-    <!-- Existing sources table -->
-    <div style="overflow-x:auto;margin-bottom:14px;">
-      <table id="rss-table" style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-          <tr style="border-bottom:1px solid #2d3148;text-align:left;">
-            <th style="padding:8px;color:#94a3b8;">სახელი</th>
-            <th style="padding:8px;color:#94a3b8;">კატეგორია</th>
-            <th style="padding:8px;color:#94a3b8;">ინტერვალი</th>
-            <th style="padding:8px;color:#94a3b8;">სტატუსი</th>
-            <th style="padding:8px;color:#94a3b8;"></th>
-          </tr>
-        </thead>
-        <tbody id="rss-tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- Add new source -->
-    <div style="border-top:1px solid #2d3148;padding-top:14px;">
-      <p style="color:#e2e8f0;font-size:13px;margin-bottom:8px;font-weight:600;">ახალი წყაროს დამატება</p>
       <div class="row">
-        <div class="g" style="flex:2"><label>სახელი</label>
-          <input id="rss-new-name" placeholder="მაგ: BBC World">
-        </div>
-        <div class="g" style="flex:1"><label>კატეგორია</label>
-          <input id="rss-new-cat" placeholder="მაგ: World" value="World">
+        <div class="g"><label>სახელი</label>
+          <input id="inp-name" placeholder="სახელი გვარი">
         </div>
       </div>
       <div class="row">
-        <div class="g" style="flex:3"><label>RSS URL</label>
-          <input id="rss-new-url" placeholder="https://feeds.bbci.co.uk/news/world/rss.xml">
-        </div>
-        <div class="g" style="flex:1"><label>ინტერვალი (წთ)</label>
-          <input type="number" id="rss-new-interval" value="30" min="5" max="1440" style="text-align:center;">
+        <div class="g"><label>ტექსტი</label>
+          <textarea id="inp-text" placeholder="ტექსტი..."></textarea>
         </div>
       </div>
-      <button class="btn" onclick="addRssSource()" style="margin-top:4px;">➕ წყაროს დამატება</button>
-    </div>
 
-    <!-- Min interval between posts -->
-    <div style="border-top:1px solid #2d3148;padding-top:14px;margin-top:14px;">
-      <div class="row" style="align-items:center;">
-        <div class="g" style="flex:2">
-          <label>მინ. დრო პოსტებს შორის (წუთი)</label>
+      <button class="btn" id="btn-gen" onclick="gen()">ქარდის გენერაცია</button>
+      <div class="spin" id="spin"></div>
+
+      <div class="result" id="res">
+        <img id="res-img" alt="">
+        <br>
+        <a class="dl" id="res-dl" href="" download="card.jpg">⬇ Download</a>
+        <br>
+        <button class="btn-fb" id="btn-fb" onclick="uploadFB('res')">📘 Upload to Facebook</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ VIEW: Auto Card ═══════════════ -->
+  <div id="viewAuto" class="view">
+    <div class="page-header">
+      <div><h2>ავტომატური ქარდი</h2><p>Tavily Search → Gemini Flash → Card → Facebook</p></div>
+    </div>
+    <div class="section">
+      <h2><span style="font-size:11px;color:#64748b;font-weight:400" id="ai-badge">Tavily + Gemini 3 Flash</span></h2>
+      <div class="row">
+        <div class="g"><label>თემა</label>
+          <input id="inp-theme" placeholder="AI სიახლეები, პოლიტიკა, სპორტი...">
+        </div>
+      </div>
+      <button class="btn" id="btn-auto" onclick="autoGen()">გენერაცია</button>
+      <div class="spin" id="spin-auto"></div>
+      <div class="result" id="res-auto">
+        <img id="res-auto-img" alt="" style="max-width:400px">
+        <br>
+        <a class="dl" id="res-auto-dl" href="" download="auto_card.jpg">⬇ Download</a>
+        <br>
+        <button class="btn-fb" id="btn-fb-auto" onclick="uploadFB('res-auto')">📘 Upload to Facebook</button>
+      </div>
+      <div id="auto-article" style="display:none;margin-top:16px;background:#1a1d2e;border:1px solid #2d3148;border-radius:8px;padding:20px;">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">სტატია</div>
+        <h3 id="auto-article-title" style="font-size:18px;color:#fff;margin-bottom:12px"></h3>
+        <div id="auto-article-text" style="font-size:14px;color:#cbd5e1;line-height:1.7;white-space:pre-wrap"></div>
+        <button onclick="copyArticle()" style="margin-top:12px;padding:8px 16px;background:#2d3148;color:#94a3b8;border:1px solid #3d4158;border-radius:5px;font-size:12px;cursor:pointer">📋 კოპირება</button>
+      </div>
+      <div id="auto-log" style="margin-top:14px;font-size:12px;line-height:1.8;max-height:160px;overflow-y:auto;background:#1a1d2e;border-radius:8px;padding:8px 12px"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ VIEW: Voice TTS ═══════════════ -->
+  <div id="viewVoice" class="view">
+    <div class="page-header">
+      <div><h2>ხმოვანი გენერაცია</h2><p>ქართული ტექსტი → Gemini TTS → WAV Audio</p></div>
+    </div>
+    <div class="section">
+      <div class="row">
+        <div class="g"><label>ტექსტი (ქართულად)</label>
+          <textarea id="inp-voice-text" placeholder="შეიყვანეთ ტექსტი ქართულად...&#10;მაგალითი: გამარჯობა, ეს არის ხმოვანი გენერაცია." style="min-height:100px"></textarea>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="g"><label>ხმა</label>
+          <select id="sel-voice" style="width:100%;background:#1a1d2e;border:1px solid #2d3148;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;">
+            <option value="Charon">Charon (მამაკაცი - ინფორმატიული)</option>
+            <option value="Kore">Kore (ქალი - მკაფიო)</option>
+            <option value="Puck">Puck (მამაკაცი - ენერგიული)</option>
+            <option value="Fenrir">Fenrir (მამაკაცი - ექსპრესიული)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;font-size:11px;color:#64748b;">
+        <span>სიმბოლოები: </span><span id="char-count">0</span><span> / 5000 (ლიმიტი ერთ voice-over-ზე)</span>
+      </div>
+
+      <button class="btn" id="btn-voice" onclick="generateVoice()">🎙️ ხმის გენერაცია</button>
+      <div class="spin" id="spin-voice"></div>
+
+      <div class="result" id="res-voice">
+        <audio id="audio-player" controls style="width:100%;max-width:400px;margin-top:16px;display:none;"></audio>
+        <br>
+        <a class="dl" id="res-voice-dl" href="" download="voice.wav" style="display:none;">⬇️ Download Audio</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ VIEW: Auto News ═══════════════ -->
+  <div id="viewNews" class="view">
+    <div class="page-header">
+      <div><h2>ავტო-სიახლეები</h2><p>interpressnews.ge/politika → Telegram დასტური → Facebook</p></div>
+    </div>
+    <div class="section">
+      <div class="row">
+        <div class="g"><label>ინტერვალი (წუთებში)</label>
           <div style="display:flex;gap:8px;align-items:center;">
-            <input type="number" id="rss-min-interval" value="30" min="5" max="1440"
-              style="width:80px;background:#151620;border:1px solid #2d3148;border-radius:7px;padding:9px 12px;color:#e2e8f0;font-size:16px;text-align:center;">
-            <button class="btn" onclick="setRssMinInterval()" style="padding:8px 16px;margin-top:0;width:auto;">შეცვლა</button>
-            <span style="color:#64748b;font-size:12px;" id="rss-queue-info">რიგში: 0</span>
+            <input type="number" id="inp-news-interval" min="5" max="1440" value="15"
+              style="width:100px;background:#1a1d2e;border:1px solid #2d3148;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:16px;text-align:center;">
+            <span style="color:#64748b;font-size:12px;" id="interval-label">ყოველ 15 წუთში</span>
           </div>
         </div>
       </div>
+
+      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
+        <button onclick="setNewsInterval(5)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">5 წთ</button>
+        <button onclick="setNewsInterval(15)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">15 წთ</button>
+        <button onclick="setNewsInterval(30)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">30 წთ</button>
+        <button onclick="setNewsInterval(45)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">45 წთ</button>
+        <button onclick="setNewsInterval(60)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">1 სთ</button>
+        <button onclick="setNewsInterval(120)" style="background:#1e2030;border:1px solid #2d3148;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;">2 სთ</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn" onclick="applyNewsInterval()" style="flex:1;">⏱ ინტერვალის შეცვლა</button>
+        <button class="btn" onclick="sendTestNews()" style="flex:1;background:#059669;">📰 სატესტო გაგზავნა</button>
+      </div>
+      <div class="spin" id="spin-news"></div>
+      <div class="result" id="res-news"></div>
     </div>
-
-    <button class="btn" onclick="sendTestRss()" style="margin-top:8px;background:#1a5c2e;">📡 სატესტო RSS გაგზავნა</button>
-    <div class="spin" id="spin-rss"></div>
-    <div class="result" id="res-rss"></div>
   </div>
 
+  <!-- ═══════════════ VIEW: RSS Sources ═══════════════ -->
+  <div id="viewRss" class="view">
+    <div class="page-header">
+      <div><h2>RSS წყაროების მართვა</h2><p>RSS Feeds → Gemini თარგმანი → Telegram დასტური → Facebook</p></div>
+    </div>
+    <div class="section">
+      <!-- Existing sources table -->
+      <div style="overflow-x:auto;margin-bottom:14px;">
+        <table id="rss-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="border-bottom:1px solid #2d3148;text-align:left;">
+              <th style="padding:10px 14px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">სახელი</th>
+              <th style="padding:10px 14px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">კატეგორია</th>
+              <th style="padding:10px 14px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">ინტერვალი</th>
+              <th style="padding:10px 14px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">სტატუსი</th>
+              <th style="padding:10px 14px;color:#64748b;"></th>
+            </tr>
+          </thead>
+          <tbody id="rss-tbody"></tbody>
+        </table>
+      </div>
 
-  <!-- history -->
-  <div class="history">
-    <h2>Recent Cards</h2>
-    <div class="hgrid" id="hgrid"></div>
+      <!-- Add new source -->
+      <div style="border-top:1px solid #2d3148;padding-top:14px;">
+        <p style="color:#e2e8f0;font-size:13px;margin-bottom:8px;font-weight:600;">ახალი წყაროს დამატება</p>
+        <div class="row">
+          <div class="g" style="flex:2"><label>სახელი</label>
+            <input id="rss-new-name" placeholder="მაგ: BBC World">
+          </div>
+          <div class="g" style="flex:1"><label>კატეგორია</label>
+            <input id="rss-new-cat" placeholder="მაგ: World" value="World">
+          </div>
+        </div>
+        <div class="row">
+          <div class="g" style="flex:3"><label>RSS URL</label>
+            <input id="rss-new-url" placeholder="https://feeds.bbci.co.uk/news/world/rss.xml">
+          </div>
+          <div class="g" style="flex:1"><label>ინტერვალი (წთ)</label>
+            <input type="number" id="rss-new-interval" value="30" min="5" max="1440" style="text-align:center;">
+          </div>
+        </div>
+        <button class="btn" onclick="addRssSource()" style="margin-top:4px;">➕ წყაროს დამატება</button>
+      </div>
+
+      <!-- Min interval between posts -->
+      <div style="border-top:1px solid #2d3148;padding-top:14px;margin-top:14px;">
+        <div class="row" style="align-items:center;">
+          <div class="g" style="flex:2">
+            <label>მინ. დრო პოსტებს შორის (წუთი)</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="number" id="rss-min-interval" value="30" min="5" max="1440"
+                style="width:80px;background:#1a1d2e;border:1px solid #2d3148;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:16px;text-align:center;">
+              <button class="btn" onclick="setRssMinInterval()" style="padding:8px 16px;margin-top:0;width:auto;">შეცვლა</button>
+              <span style="color:#64748b;font-size:12px;" id="rss-queue-info">რიგში: 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn" onclick="sendTestRss()" style="margin-top:8px;background:#059669;">📡 სატესტო RSS გაგზავნა</button>
+      <div class="spin" id="spin-rss"></div>
+      <div class="result" id="res-rss"></div>
+    </div>
   </div>
+
+  <!-- ═══════════════ VIEW: History ═══════════════ -->
+  <div id="viewHistory" class="view">
+    <div class="page-header">
+      <div><h2>ბოლო ქარდები</h2><p>გენერირებული ქარდების ისტორია</p></div>
+    </div>
+    <div class="history">
+      <div class="hgrid" id="hgrid"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- FLOW OVERLAY -->
@@ -730,6 +830,18 @@ DASHBOARD = """<!DOCTYPE html>
 
 <script>
 (function(){
+  // ── View switching ──────────────────────────────────────────────────
+  window.showView = function(view) {
+    document.querySelectorAll('.view').forEach(function(v){ v.style.display = 'none'; });
+    var el = document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1));
+    if (el) el.style.display = 'block';
+    document.querySelectorAll('.nav-item[data-nav]').forEach(function(n){ n.classList.remove('active'); });
+    var nav = document.querySelector('[data-nav="' + view + '"]');
+    if (nav) nav.classList.add('active');
+    if (view === 'history') loadHistory();
+    if (view === 'rss') loadRssSources();
+  };
+
   const drop   = document.getElementById('drop');
   const fi     = document.getElementById('fi');
   const prev   = document.getElementById('prev');
@@ -1176,7 +1288,7 @@ DASHBOARD = """<!DOCTYPE html>
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid #1a1d2e';
         const sid = s.id;
-        const bg = s.enabled ? '#1a5c2e' : '#5c1a1a';
+        const bg = s.enabled ? '#059669' : '#dc2626';
         const label = s.enabled ? '✅ ჩართული' : '❌ გამორთული';
         tr.innerHTML =
           '<td style="padding:8px;color:#e2e8f0;">' + s.name + '</td>' +
@@ -1417,7 +1529,7 @@ DASHBOARD = """<!DOCTYPE html>
       const arrow = document.createElementNS('http://www.w3.org/2000/svg','polygon');
       const ax = tx - 6;
       arrow.setAttribute('points', tx+','+ty+' '+ax+','+(ty-4)+' '+ax+','+(ty+4));
-      arrow.setAttribute('fill', type === 'active' ? '#1e94b9' : '#3d4158');
+      arrow.setAttribute('fill', type === 'active' ? '#1877f2' : '#3d4158');
       svg.appendChild(arrow);
     });
   }
