@@ -63,8 +63,12 @@ def _get_activity_posts(days: int = 7) -> list[dict]:
     Imports activity_log at call time to avoid circular imports.
     """
     try:
-        from activity_log import get_top
-        return get_top(limit=100)
+        from activity_log import get_logs
+        all_logs = get_logs()
+        # Return only published posts (with facebook_post_id)
+        published = [e for e in all_logs if e.get("facebook_post_id")]
+        print(f"[FBAnalytics] Got {len(published)} published posts from activity log")
+        return published
     except Exception as e:
         print(f"[FBAnalytics] Failed to get activity posts: {e}")
         return []

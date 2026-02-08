@@ -43,6 +43,59 @@ def _trend_pct(current, previous) -> float:
 # ---------------------------------------------------------------------------
 # Post-level enrichment
 # ---------------------------------------------------------------------------
+def _build_from_activity(activity_posts: list[dict], since: str, until: str) -> list[dict]:
+    """Build enriched post list directly from activity log data.
+
+    Used as PRIMARY source when Graph API /{PAGE_ID}/posts returns nothing.
+    Filters by date range and only includes published posts.
+    """
+    enriched = []
+    for ap in activity_posts:
+        fb_id = ap.get("facebook_post_id", "")
+        if not fb_id:
+            continue
+        # Filter by date range
+        ts = str(ap.get("published_at", "") or ap.get("timestamp", ""))
+        if ts and since and ts[:10] < since:
+            continue
+        if ts and until and ts[:10] > until:
+            continue
+
+        likes = _safe_int(ap.get("likes", 0))
+        comments = _safe_int(ap.get("comments", 0))
+        shares = _safe_int(ap.get("shares", 0))
+        reach = _safe_int(ap.get("post_reach", 0))
+        clicks = _safe_int(ap.get("clicks", 0))
+        engagement_total = likes + comments + shares
+        engagement_rate = _safe_pct(engagement_total, reach) if reach else 0.0
+        share_rate = _safe_pct(shares, reach) if reach else 0.0
+
+        enriched.append({
+            "id": fb_id,
+            "message": ap.get("title", "") or ap.get("caption", ""),
+            "created_time": ts,
+            "type": "photo",  # default — activity log doesn't track post type
+            "source": ap.get("source", "unknown"),
+            "likes": likes,
+            "comments": comments,
+            "shares": shares,
+            "reactions": {
+                "love": _safe_int(ap.get("reactions_love", 0)),
+                "haha": _safe_int(ap.get("reactions_haha", 0)),
+                "wow": _safe_int(ap.get("reactions_wow", 0)),
+                "sad": _safe_int(ap.get("reactions_sad", 0)),
+                "angry": _safe_int(ap.get("reactions_angry", 0)),
+            },
+            "reach": reach,
+            "clicks": clicks,
+            "engagement_total": engagement_total,
+            "engagement_rate": engagement_rate,
+            "share_rate": share_rate,
+        })
+
+    return enriched
+
+
 def _enrich_posts(posts: list[dict], activity_posts: list[dict]) -> list[dict]:
     """Enrich API posts with activity log data (engagement metrics).
 
@@ -275,7 +328,7 @@ def build_kpi_report(since: str, until: str, period_type: str = "weekly",
     """
     print(f"[FBAnalytics] Building {period_type} KPI report: {since} — {until}")
 
-    # Fetch raw metrics
+    # Fetch raw page-level metrics from Graph API
     raw = fetch_period_metrics(since, until)
     page_reach = raw["page"]["reach"]
     page_engagement = raw["page"]["engagement"]
@@ -283,8 +336,17 @@ def build_kpi_report(since: str, until: str, period_type: str = "weekly",
     fans = raw["page"]["fans"]
     api_posts = raw["posts"]
 
-    # Enrich posts with activity log data
-    enriched = _enrich_posts(api_posts, activity_posts or [])
+    # Use activity log as PRIMARY source (has engagement data),
+    # Graph API posts as secondary for enrichment
+    if activity_posts:
+        enriched = _build_from_activity(activity_posts, since, until)
+        print(f"[FBAnalytics] Using {len(enriched)} posts from activity log")
+    elif api_posts:
+        enriched = _enrich_posts(api_posts, [])
+        print(f"[FBAnalytics] Using {len(enriched)} posts from Graph API")
+    else:
+        enriched = []
+        print("[FBAnalytics] No posts found from either source")
 
     # Compute all 6 pillars
     distribution = compute_distribution(page_reach, enriched)
