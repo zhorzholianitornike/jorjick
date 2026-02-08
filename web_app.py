@@ -317,40 +317,55 @@ DASHBOARD = """<!DOCTYPE html>
   }
   .flow-close:hover { background:#ef4444; color:#fff; border-color:#ef4444; }
 
-  /* ── Flow canvas ── */
-  .flow-canvas { position:relative; min-height:1200px; padding:40px; min-width:1200px; }
-
-  /* ── Flow nodes ── */
-  .fnode {
-    position:absolute; width:160px; background:#1e2030; border:1px solid #2d3148;
-    border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.3);
-    transition:transform .15s, box-shadow .15s;
+  /* ── Flow canvas — n8n dot grid ── */
+  .flow-canvas {
+    position:relative; min-height:1150px; padding:40px; min-width:1200px;
+    background-image:radial-gradient(circle, #2d3148 1px, transparent 1px);
+    background-size:20px 20px;
   }
-  .fnode:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.5); }
-  .fnode-head { padding:8px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
-  .fnode-body { padding:10px 12px; }
-  .fnode-icon { font-size:20px; margin-bottom:4px; }
-  .fnode-name { font-size:12px; font-weight:600; color:#fff; }
-  .fnode-desc { font-size:10px; color:#64748b; margin-top:2px; }
 
-  /* ── Node colors ── */
-  .fnode-blue .fnode-head   { background:#1e3a5f; color:#60a5fa; }
-  .fnode-green .fnode-head  { background:#14532d; color:#4ade80; }
-  .fnode-orange .fnode-head { background:#431407; color:#fb923c; }
-  .fnode-purple .fnode-head { background:#3b0764; color:#c084fc; }
-  .fnode-red .fnode-head    { background:#450a0a; color:#f87171; }
-  .fnode-cyan .fnode-head   { background:#083344; color:#22d3ee; }
+  /* ── n8n-style nodes ── */
+  .n8n-node {
+    position:absolute; width:180px; background:#1e2030; border:1px solid #2d3148;
+    border-radius:8px; display:flex; align-items:center; overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3); transition:all .15s; cursor:default;
+  }
+  .n8n-node:hover { border-color:#3d4168; box-shadow:0 4px 16px rgba(0,0,0,0.5); transform:translateY(-1px); }
+  .n-accent { width:4px; align-self:stretch; flex-shrink:0; }
+  .n-icon {
+    width:36px; height:36px; border-radius:8px; display:flex; align-items:center;
+    justify-content:center; font-size:18px; margin:10px 8px 10px 12px; flex-shrink:0;
+  }
+  .n-text { padding:10px 12px 10px 0; min-width:0; flex:1; }
+  .n-name { font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .n-desc { font-size:10px; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* connection ports */
+  .n-port {
+    position:absolute; width:10px; height:10px; border-radius:50%;
+    border:2px solid #3d4168; background:#0f1117; top:50%; transform:translateY(-50%);
+    transition:all .15s;
+  }
+  .n-port-in { left:-5px; }
+  .n-port-out { right:-5px; }
+  .n8n-node:hover .n-port { border-color:#1877f2; background:#151620; }
+
+  /* row labels */
+  .flow-row-label {
+    position:absolute; font-size:11px; font-weight:700; color:#475569;
+    text-transform:uppercase; letter-spacing:1px; left:40px;
+  }
 
   /* ── Flow lines SVG ── */
   .flow-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
-  .flow-line { fill:none; stroke:#3d4158; stroke-width:2; }
-  .flow-line-active { stroke:#1877f2; stroke-dasharray:6 4; animation:flowdash 1s linear infinite; }
+  .flow-line { fill:none; stroke:#2d3148; stroke-width:1.5; }
+  .flow-line-active { stroke:#1877f2; stroke-width:1.5; stroke-dasharray:6 4; animation:flowdash 1s linear infinite; }
   @keyframes flowdash { to { stroke-dashoffset:-10; } }
 
   /* ── Flow legend ── */
-  .flow-legend { display:flex; gap:16px; padding:16px 30px; border-top:1px solid #2d3148; flex-wrap:wrap; }
+  .flow-legend { display:flex; gap:18px; padding:16px 30px; border-top:1px solid #2d3148; flex-wrap:wrap; }
   .flow-leg-item { display:flex; align-items:center; gap:6px; font-size:11px; color:#94a3b8; }
-  .flow-leg-dot { width:10px; height:10px; border-radius:3px; }
+  .flow-leg-dot { width:10px; height:10px; border-radius:50%; }
 
   /* ── History grid ── */
   .history h2 { font-size:16px; color:#fff; margin-bottom:14px; }
@@ -641,7 +656,7 @@ DASHBOARD = """<!DOCTYPE html>
 
 </div>
 
-<!-- FLOW OVERLAY -->
+<!-- FLOW OVERLAY — n8n style -->
 <div class="flow-overlay" id="flow-overlay">
   <div class="flow-header">
     <h2>⚡ Agent Architecture Flow</h2>
@@ -651,178 +666,262 @@ DASHBOARD = """<!DOCTYPE html>
     <div class="flow-canvas" id="flow-canvas">
       <svg class="flow-svg" id="flow-svg"></svg>
 
+      <!-- ROW LABELS -->
+      <div class="flow-row-label" style="top:18px">Manual Card Pipeline</div>
+      <div class="flow-row-label" style="top:148px">Auto Card Pipeline</div>
+      <div class="flow-row-label" style="top:278px">Voice TTS Pipeline</div>
+      <div class="flow-row-label" style="top:408px">IPN News Pipeline</div>
+      <div class="flow-row-label" style="top:538px">RSS International Pipeline</div>
+      <div class="flow-row-label" style="top:668px">Telegram Bot</div>
+      <div class="flow-row-label" style="top:798px">Employee Lookup</div>
+      <div class="flow-row-label" style="top:928px">System / Scheduler</div>
+
       <!-- ROW 1: Manual Card -->
-      <div class="fnode fnode-blue" style="left:40px;top:30px" id="fn-dash1">
-        <div class="fnode-head">INPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">🖥️</div><div class="fnode-name">Dashboard</div><div class="fnode-desc">ვებ ინტერფეისი</div></div>
+      <div class="n8n-node" style="left:40px;top:40px" id="fn-dash1">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">🖥️</div>
+        <div class="n-text"><div class="n-name">Dashboard</div><div class="n-desc">ვებ ინტერფეისი</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-blue" style="left:240px;top:30px" id="fn-photo">
-        <div class="fnode-head">DATA</div>
-        <div class="fnode-body"><div class="fnode-icon">📷</div><div class="fnode-name">Photo + Text</div><div class="fnode-desc">ფოტო, სახელი, ტექსტი</div></div>
+      <div class="n8n-node" style="left:260px;top:40px" id="fn-photo">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">📷</div>
+        <div class="n-text"><div class="n-name">Photo + Text</div><div class="n-desc">ფოტო, სახელი, ტექსტი</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:440px;top:30px" id="fn-cardgen">
-        <div class="fnode-head">PROCESS</div>
-        <div class="fnode-body"><div class="fnode-icon">🃏</div><div class="fnode-name">Card Generator</div><div class="fnode-desc">Playwright render</div></div>
+      <div class="n8n-node" style="left:480px;top:40px" id="fn-cardgen">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🃏</div>
+        <div class="n-text"><div class="n-name">Card Generator</div><div class="n-desc">Playwright render</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-orange" style="left:640px;top:30px" id="fn-card1">
-        <div class="fnode-head">OUTPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">🖼️</div><div class="fnode-name">Card Image</div><div class="fnode-desc">JPG 1080×1350</div></div>
+      <div class="n8n-node" style="left:700px;top:40px" id="fn-card1">
+        <div class="n-accent" style="background:#f59e0b"></div>
+        <div class="n-icon" style="background:rgba(245,158,11,0.15)">🖼️</div>
+        <div class="n-text"><div class="n-name">Card Image</div><div class="n-desc">JPG 1080×1350</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-red" style="left:840px;top:30px" id="fn-fb1">
-        <div class="fnode-head">PUBLISH</div>
-        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Facebook</div><div class="fnode-desc">ავტო-ატვირთვა</div></div>
+      <div class="n8n-node" style="left:920px;top:40px" id="fn-fb1">
+        <div class="n-accent" style="background:#ef4444"></div>
+        <div class="n-icon" style="background:rgba(239,68,68,0.15)">📘</div>
+        <div class="n-text"><div class="n-name">Facebook</div><div class="n-desc">ავტო-ატვირთვა</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 2: Auto Card -->
-      <div class="fnode fnode-blue" style="left:40px;top:150px" id="fn-dash2">
-        <div class="fnode-head">INPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">🖥️</div><div class="fnode-name">Theme Input</div><div class="fnode-desc">თემა / საძიებო</div></div>
+      <div class="n8n-node" style="left:40px;top:170px" id="fn-dash2">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">🖥️</div>
+        <div class="n-text"><div class="n-name">Theme Input</div><div class="n-desc">თემა / საძიებო</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:240px;top:150px" id="fn-tavily">
-        <div class="fnode-head">SEARCH</div>
-        <div class="fnode-body"><div class="fnode-icon">🔍</div><div class="fnode-name">Tavily Search</div><div class="fnode-desc">ნიუსების ძიება</div></div>
+      <div class="n8n-node" style="left:260px;top:170px" id="fn-tavily">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🔍</div>
+        <div class="n-text"><div class="n-name">Tavily Search</div><div class="n-desc">ნიუსების ძიება</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:440px;top:150px" id="fn-gemini">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🤖</div><div class="fnode-name">Gemini Flash</div><div class="fnode-desc">სტატია + სათაური</div></div>
+      <div class="n8n-node" style="left:480px;top:170px" id="fn-gemini">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🤖</div>
+        <div class="n-text"><div class="n-name">Gemini Flash</div><div class="n-desc">სტატია + სათაური</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:640px;top:150px" id="fn-imagen">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🎨</div><div class="fnode-name">Imagen 3</div><div class="fnode-desc">ფოტო გენერაცია</div></div>
+      <div class="n8n-node" style="left:700px;top:170px" id="fn-imagen">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🎨</div>
+        <div class="n-text"><div class="n-name">Imagen 3</div><div class="n-desc">ფოტო გენერაცია</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-orange" style="left:840px;top:150px" id="fn-card2">
-        <div class="fnode-head">OUTPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">📰</div><div class="fnode-name">Auto Card</div><div class="fnode-desc">ქარდი + სტატია</div></div>
+      <div class="n8n-node" style="left:920px;top:170px" id="fn-card2">
+        <div class="n-accent" style="background:#f59e0b"></div>
+        <div class="n-icon" style="background:rgba(245,158,11,0.15)">📰</div>
+        <div class="n-text"><div class="n-name">Auto Card</div><div class="n-desc">ქარდი + სტატია</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 3: Voice TTS -->
-      <div class="fnode fnode-blue" style="left:40px;top:270px" id="fn-dash3">
-        <div class="fnode-head">INPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">📝</div><div class="fnode-name">Text Input</div><div class="fnode-desc">ქართული ტექსტი</div></div>
+      <div class="n8n-node" style="left:40px;top:300px" id="fn-dash3">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">📝</div>
+        <div class="n-text"><div class="n-name">Text Input</div><div class="n-desc">ქართული ტექსტი</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:300px;top:270px" id="fn-tts">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">Gemini TTS</div><div class="fnode-desc">Charon voice</div></div>
+      <div class="n8n-node" style="left:320px;top:300px" id="fn-tts">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🎙️</div>
+        <div class="n-text"><div class="n-name">Gemini TTS</div><div class="n-desc">Charon voice</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-orange" style="left:560px;top:270px" id="fn-wav">
-        <div class="fnode-head">OUTPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">🔊</div><div class="fnode-name">WAV Audio</div><div class="fnode-desc">24kHz mono</div></div>
+      <div class="n8n-node" style="left:600px;top:300px" id="fn-wav">
+        <div class="n-accent" style="background:#f59e0b"></div>
+        <div class="n-icon" style="background:rgba(245,158,11,0.15)">🔊</div>
+        <div class="n-text"><div class="n-name">WAV Audio</div><div class="n-desc">24kHz mono</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 4: IPN Auto-News -->
-      <div class="fnode fnode-cyan" style="left:40px;top:390px" id="fn-ipn">
-        <div class="fnode-head">SCRAPER</div>
-        <div class="fnode-body"><div class="fnode-icon">🇬🇪</div><div class="fnode-name">interpressnews</div><div class="fnode-desc">პოლიტიკა კატეგორია</div></div>
+      <div class="n8n-node" style="left:40px;top:430px" id="fn-ipn">
+        <div class="n-accent" style="background:#06b6d4"></div>
+        <div class="n-icon" style="background:rgba(6,182,212,0.15)">🇬🇪</div>
+        <div class="n-text"><div class="n-name">interpressnews</div><div class="n-desc">პოლიტიკა კატეგორია</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:240px;top:390px" id="fn-ipn-scrape">
-        <div class="fnode-head">PROCESS</div>
-        <div class="fnode-body"><div class="fnode-icon">🕷️</div><div class="fnode-name">BS4 Scraper</div><div class="fnode-desc">schema.org/Article</div></div>
+      <div class="n8n-node" style="left:260px;top:430px" id="fn-ipn-scrape">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🕷️</div>
+        <div class="n-text"><div class="n-name">BS4 Scraper</div><div class="n-desc">schema.org/Article</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:440px;top:390px" id="fn-ipn-tg">
-        <div class="fnode-head">APPROVAL</div>
-        <div class="fnode-body"><div class="fnode-icon">✅</div><div class="fnode-name">TG Approval</div><div class="fnode-desc">დადასტურება / უარყოფა</div></div>
+      <div class="n8n-node" style="left:480px;top:430px" id="fn-ipn-tg">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">✅</div>
+        <div class="n-text"><div class="n-name">TG Approval</div><div class="n-desc">დადასტურება / უარყოფა</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:640px;top:390px" id="fn-ipn-caption">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🤖</div><div class="fnode-name">Gemini Caption</div><div class="fnode-desc">FB კაფშენი + ჰეშთეგი</div></div>
+      <div class="n8n-node" style="left:700px;top:430px" id="fn-ipn-caption">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🤖</div>
+        <div class="n-text"><div class="n-name">Gemini Caption</div><div class="n-desc">FB კაფშენი + ჰეშთეგი</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-red" style="left:840px;top:390px" id="fn-ipn-fb">
-        <div class="fnode-head">PUBLISH</div>
-        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Card + Facebook</div><div class="fnode-desc">ქარდი → FB გვერდი</div></div>
+      <div class="n8n-node" style="left:920px;top:430px" id="fn-ipn-fb">
+        <div class="n-accent" style="background:#ef4444"></div>
+        <div class="n-icon" style="background:rgba(239,68,68,0.15)">📘</div>
+        <div class="n-text"><div class="n-name">Card + Facebook</div><div class="n-desc">ქარდი → FB გვერდი</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 5: RSS International News -->
-      <div class="fnode fnode-cyan" style="left:40px;top:510px" id="fn-rss">
-        <div class="fnode-head">SOURCE</div>
-        <div class="fnode-body"><div class="fnode-icon">📡</div><div class="fnode-name">RSS Feeds</div><div class="fnode-desc">CNN / BBC</div></div>
+      <div class="n8n-node" style="left:40px;top:560px" id="fn-rss">
+        <div class="n-accent" style="background:#06b6d4"></div>
+        <div class="n-icon" style="background:rgba(6,182,212,0.15)">📡</div>
+        <div class="n-text"><div class="n-name">RSS Feeds</div><div class="n-desc">CNN / BBC</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:210px;top:510px" id="fn-rss-parse">
-        <div class="fnode-head">PROCESS</div>
-        <div class="fnode-body"><div class="fnode-icon">📋</div><div class="fnode-name">feedparser</div><div class="fnode-desc">RSS → სტატიები</div></div>
+      <div class="n8n-node" style="left:230px;top:560px" id="fn-rss-parse">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">📋</div>
+        <div class="n-text"><div class="n-name">feedparser</div><div class="n-desc">RSS → სტატიები</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:380px;top:510px" id="fn-rss-translate">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🌐</div><div class="fnode-name">Gemini Translate</div><div class="fnode-desc">EN → KA თარგმანი</div></div>
+      <div class="n8n-node" style="left:420px;top:560px" id="fn-rss-translate">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🌐</div>
+        <div class="n-text"><div class="n-name">Gemini Translate</div><div class="n-desc">EN → KA თარგმანი</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-orange" style="left:550px;top:510px" id="fn-rss-queue">
-        <div class="fnode-head">QUEUE</div>
-        <div class="fnode-body"><div class="fnode-icon">📦</div><div class="fnode-name">Queue System</div><div class="fnode-desc">რიგი + ინტერვალი</div></div>
+      <div class="n8n-node" style="left:610px;top:560px" id="fn-rss-queue">
+        <div class="n-accent" style="background:#f59e0b"></div>
+        <div class="n-icon" style="background:rgba(245,158,11,0.15)">📦</div>
+        <div class="n-text"><div class="n-name">Queue System</div><div class="n-desc">რიგი + ინტერვალი</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:720px;top:510px" id="fn-rss-tg">
-        <div class="fnode-head">APPROVAL</div>
-        <div class="fnode-body"><div class="fnode-icon">✅</div><div class="fnode-name">TG Approval</div><div class="fnode-desc">დადასტურება / უარყოფა</div></div>
+      <div class="n8n-node" style="left:800px;top:560px" id="fn-rss-tg">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">✅</div>
+        <div class="n-text"><div class="n-name">TG Approval</div><div class="n-desc">დადასტურება / უარყოფა</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-red" style="left:890px;top:510px" id="fn-rss-fb">
-        <div class="fnode-head">PUBLISH</div>
-        <div class="fnode-body"><div class="fnode-icon">📘</div><div class="fnode-name">Card + Facebook</div><div class="fnode-desc">ქარდი → FB გვერდი</div></div>
+      <div class="n8n-node" style="left:990px;top:560px" id="fn-rss-fb">
+        <div class="n-accent" style="background:#ef4444"></div>
+        <div class="n-icon" style="background:rgba(239,68,68,0.15)">📘</div>
+        <div class="n-text"><div class="n-name">Card + Facebook</div><div class="n-desc">ქარდი → FB გვერდი</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 6: Telegram Bot -->
-      <div class="fnode fnode-purple" style="left:40px;top:640px" id="fn-tg">
-        <div class="fnode-head">TELEGRAM</div>
-        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Telegram Bot</div><div class="fnode-desc">/start, /voice, free text</div></div>
+      <div class="n8n-node" style="left:40px;top:690px" id="fn-tg">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">💬</div>
+        <div class="n-text"><div class="n-name">Telegram Bot</div><div class="n-desc">/start, /voice, free text</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:240px;top:630px" id="fn-tgstart">
-        <div class="fnode-head">COMMAND</div>
-        <div class="fnode-body"><div class="fnode-icon">📸</div><div class="fnode-name">/start</div><div class="fnode-desc">ფოტო → ქარდი</div></div>
+      <div class="n8n-node" style="left:280px;top:680px" id="fn-tgstart">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">📸</div>
+        <div class="n-text"><div class="n-name">/start</div><div class="n-desc">ფოტო → ქარდი</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:440px;top:630px" id="fn-tgvoice">
-        <div class="fnode-head">COMMAND</div>
-        <div class="fnode-body"><div class="fnode-icon">🎙️</div><div class="fnode-name">/voice</div><div class="fnode-desc">ტექსტი → აუდიო</div></div>
+      <div class="n8n-node" style="left:500px;top:680px" id="fn-tgvoice">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">🎙️</div>
+        <div class="n-text"><div class="n-name">/voice</div><div class="n-desc">ტექსტი → აუდიო</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:640px;top:630px" id="fn-tgfree">
-        <div class="fnode-head">QUERY</div>
-        <div class="fnode-body"><div class="fnode-icon">💬</div><div class="fnode-name">Free Text</div><div class="fnode-desc">თანამშრომლის ძიება</div></div>
+      <div class="n8n-node" style="left:720px;top:680px" id="fn-tgfree">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">💬</div>
+        <div class="n-text"><div class="n-name">Free Text</div><div class="n-desc">თანამშრომლის ძიება</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-orange" style="left:840px;top:640px" id="fn-tgout">
-        <div class="fnode-head">OUTPUT</div>
-        <div class="fnode-body"><div class="fnode-icon">📤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">ქარდი / ხმა / ინფო</div></div>
+      <div class="n8n-node" style="left:940px;top:690px" id="fn-tgout">
+        <div class="n-accent" style="background:#f59e0b"></div>
+        <div class="n-icon" style="background:rgba(245,158,11,0.15)">📤</div>
+        <div class="n-text"><div class="n-name">TG Response</div><div class="n-desc">ქარდი / ხმა / ინფო</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 7: Employee Lookup -->
-      <div class="fnode fnode-blue" style="left:40px;top:770px" id="fn-gsheet">
-        <div class="fnode-head">DATA</div>
-        <div class="fnode-body"><div class="fnode-icon">📊</div><div class="fnode-name">Google Sheet</div><div class="fnode-desc">თანამშრომლების DB</div></div>
+      <div class="n8n-node" style="left:40px;top:820px" id="fn-gsheet">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">📊</div>
+        <div class="n-text"><div class="n-name">Google Sheet</div><div class="n-desc">თანამშრომლების DB</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-green" style="left:300px;top:770px" id="fn-openai">
-        <div class="fnode-head">AI</div>
-        <div class="fnode-body"><div class="fnode-icon">🧠</div><div class="fnode-name">OpenAI gpt-4o-mini</div><div class="fnode-desc">ბუნებრივი ენის ძიება</div></div>
+      <div class="n8n-node" style="left:320px;top:820px" id="fn-openai">
+        <div class="n-accent" style="background:#22c55e"></div>
+        <div class="n-icon" style="background:rgba(34,197,94,0.15)">🧠</div>
+        <div class="n-text"><div class="n-name">OpenAI gpt-4o-mini</div><div class="n-desc">ბუნებრივი ენის ძიება</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:560px;top:770px" id="fn-emp-tg">
-        <div class="fnode-head">TELEGRAM</div>
-        <div class="fnode-body"><div class="fnode-icon">👤</div><div class="fnode-name">TG Response</div><div class="fnode-desc">თანამშრომლის ინფო</div></div>
+      <div class="n8n-node" style="left:600px;top:820px" id="fn-emp-tg">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">👤</div>
+        <div class="n-text"><div class="n-name">TG Response</div><div class="n-desc">თანამშრომლის ინფო</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
 
       <!-- ROW 8: System / Scheduler + GitHub -->
-      <div class="fnode fnode-cyan" style="left:40px;top:900px" id="fn-timer">
-        <div class="fnode-head">SCHEDULER</div>
-        <div class="fnode-body"><div class="fnode-icon">⏰</div><div class="fnode-name">Hourly Timer</div><div class="fnode-desc">ყოველ საათში</div></div>
+      <div class="n8n-node" style="left:40px;top:950px" id="fn-timer">
+        <div class="n-accent" style="background:#06b6d4"></div>
+        <div class="n-icon" style="background:rgba(6,182,212,0.15)">⏰</div>
+        <div class="n-text"><div class="n-name">Hourly Timer</div><div class="n-desc">ყოველ საათში</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-cyan" style="left:260px;top:900px" id="fn-report">
-        <div class="fnode-head">ACTION</div>
-        <div class="fnode-body"><div class="fnode-icon">📊</div><div class="fnode-name">Status Report</div><div class="fnode-desc">სტატუსი + uptime</div></div>
+      <div class="n8n-node" style="left:280px;top:950px" id="fn-report">
+        <div class="n-accent" style="background:#06b6d4"></div>
+        <div class="n-icon" style="background:rgba(6,182,212,0.15)">📊</div>
+        <div class="n-text"><div class="n-name">Status Report</div><div class="n-desc">სტატუსი + uptime</div></div>
+        <div class="n-port n-port-in"></div><div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-purple" style="left:480px;top:900px" id="fn-tgadmin">
-        <div class="fnode-head">TELEGRAM</div>
-        <div class="fnode-body"><div class="fnode-icon">👤</div><div class="fnode-name">Admin Chat</div><div class="fnode-desc">შეტყობინება</div></div>
+      <div class="n8n-node" style="left:520px;top:950px" id="fn-tgadmin">
+        <div class="n-accent" style="background:#a855f7"></div>
+        <div class="n-icon" style="background:rgba(168,85,247,0.15)">👤</div>
+        <div class="n-text"><div class="n-name">Admin Chat</div><div class="n-desc">შეტყობინება</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
-      <div class="fnode fnode-cyan" style="left:700px;top:900px" id="fn-github">
-        <div class="fnode-head">STORAGE</div>
-        <div class="fnode-body"><div class="fnode-icon">🐙</div><div class="fnode-name">GitHub</div><div class="fnode-desc">photos/ sync</div></div>
+      <div class="n8n-node" style="left:760px;top:950px" id="fn-github">
+        <div class="n-accent" style="background:#06b6d4"></div>
+        <div class="n-icon" style="background:rgba(6,182,212,0.15)">🐙</div>
+        <div class="n-text"><div class="n-name">GitHub</div><div class="n-desc">photos/ sync</div></div>
+        <div class="n-port n-port-out"></div>
       </div>
-      <div class="fnode fnode-blue" style="left:920px;top:900px" id="fn-photos">
-        <div class="fnode-head">LIBRARY</div>
-        <div class="fnode-body"><div class="fnode-icon">📁</div><div class="fnode-name">Photo Library</div><div class="fnode-desc">ატვირთვა/წაშლა</div></div>
+      <div class="n8n-node" style="left:980px;top:950px" id="fn-photos">
+        <div class="n-accent" style="background:#3b82f6"></div>
+        <div class="n-icon" style="background:rgba(59,130,246,0.15)">📁</div>
+        <div class="n-text"><div class="n-name">Photo Library</div><div class="n-desc">ატვირთვა/წაშლა</div></div>
+        <div class="n-port n-port-in"></div>
       </div>
     </div>
   </div>
   <div class="flow-legend">
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#60a5fa"></div> Input / Data</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#4ade80"></div> AI / Process</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#fb923c"></div> Output / Queue</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#c084fc"></div> Telegram</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#22d3ee"></div> Source / System</div>
-    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#f87171"></div> Publish</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#3b82f6"></div> Input / Data</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#22c55e"></div> AI / Process</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#f59e0b"></div> Output / Queue</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#a855f7"></div> Telegram</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#06b6d4"></div> Source / System</div>
+    <div class="flow-leg-item"><div class="flow-leg-dot" style="background:#ef4444"></div> Publish</div>
   </div>
 </div>
 
@@ -1512,24 +1611,27 @@ DASHBOARD = """<!DOCTYPE html>
       const toEl = document.getElementById(toId);
       if (!fromEl || !toEl) return;
 
+      // n8n-style: connect from output port (right) to input port (left)
       const fx = fromEl.offsetLeft + fromEl.offsetWidth;
       const fy = fromEl.offsetTop + fromEl.offsetHeight / 2;
       const tx = toEl.offsetLeft;
       const ty = toEl.offsetTop + toEl.offsetHeight / 2;
 
-      const mx = (fx + tx) / 2;
-      const d = 'M'+fx+','+fy+' C'+mx+','+fy+' '+mx+','+ty+' '+tx+','+ty;
+      // Smooth S-curve bezier (n8n style)
+      const dx = Math.abs(tx - fx);
+      const cp = Math.max(dx * 0.4, 50);
+      const d = 'M'+fx+','+fy+' C'+(fx+cp)+','+fy+' '+(tx-cp)+','+ty+' '+tx+','+ty;
 
       const path = document.createElementNS('http://www.w3.org/2000/svg','path');
       path.setAttribute('d', d);
       path.setAttribute('class', type === 'active' ? 'flow-line flow-line-active' : 'flow-line');
       svg.appendChild(path);
 
-      // Arrow
+      // Small arrow at target
       const arrow = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-      const ax = tx - 6;
-      arrow.setAttribute('points', tx+','+ty+' '+ax+','+(ty-4)+' '+ax+','+(ty+4));
-      arrow.setAttribute('fill', type === 'active' ? '#1877f2' : '#3d4158');
+      const ax = tx - 5;
+      arrow.setAttribute('points', tx+','+ty+' '+ax+','+(ty-3)+' '+ax+','+(ty+3));
+      arrow.setAttribute('fill', type === 'active' ? '#1877f2' : '#2d3148');
       svg.appendChild(arrow);
     });
   }
