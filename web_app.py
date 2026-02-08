@@ -37,6 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from card_generator import CardGenerator, generate_auto_card
 from facebook import post_photo, post_photo_ext, get_post_insights, get_page_stats, get_page_insights, get_post_reach, get_page_growth, get_page_views
 from activity_log import log_activity, update_activity, get_logs, get_summary, get_top, get_today_detail, get_weekly_summary
+from analytics.fb_scheduler import tg_fb_weekly, tg_fb_monthly
 from setup_fonts import download as ensure_font
 
 # ---------------------------------------------------------------------------
@@ -3621,6 +3622,8 @@ async def _run_telegram():
     tg = Application.builder().token(TELEGRAM_TOKEN).build()
     tg.add_handler(CallbackQueryHandler(tg_news_callback, pattern=r"^news_"))
     tg.add_handler(CommandHandler("voice", tg_voice))
+    tg.add_handler(CommandHandler("fb_weekly", tg_fb_weekly))
+    tg.add_handler(CommandHandler("fb_monthly", tg_fb_monthly))
     tg.add_handler(ConversationHandler(
         entry_points=[CommandHandler("start", tg_start)],
         states={
@@ -3651,6 +3654,8 @@ async def on_startup():
     asyncio.create_task(_rss_queue_sender_loop())    # RSS queue sender
     asyncio.create_task(_fb_insights_loop())           # FB engagement refresh
     asyncio.create_task(_weekly_report_loop())          # weekly summary (Monday 10:00)
+    from analytics import setup_analytics               # FB analytics module
+    asyncio.create_task(setup_analytics(app))            # analytics loops + endpoints
 
 
 # ---------------------------------------------------------------------------
