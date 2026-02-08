@@ -2323,26 +2323,15 @@ async def api_debug_fb_post(post_id: str):
         results["post_fields"] = {"status": r1.status_code, "data": r1.json()}
     except Exception as e:
         results["post_fields"] = {"error": str(e)}
-    # Test 2: Photo fields (no shares, no aliases)
+    # Test 2: Bare Photo fields (just likes + comments, no reactions)
     try:
         r2 = requests.get(f"{GRAPH_URL}/{post_id}", params={
             "access_token": PAGE_TOKEN,
-            "fields": "likes.summary(true),comments.summary(true),reactions.summary(total_count),created_time"
+            "fields": "likes.summary(true),comments.summary(true),created_time"
         }, timeout=15)
-        results["photo_simple"] = {"status": r2.status_code, "data": r2.json()}
+        results["photo_bare"] = {"status": r2.status_code, "data": r2.json()}
     except Exception as e:
-        results["photo_simple"] = {"error": str(e)}
-    # Test 3: Photo fields with aliased reactions
-    try:
-        r3 = requests.get(f"{GRAPH_URL}/{post_id}", params={
-            "access_token": PAGE_TOKEN,
-            "fields": "likes.summary(true),comments.summary(true),"
-                      "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
-                      "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),created_time"
-        }, timeout=15)
-        results["photo_aliased"] = {"status": r3.status_code, "data": r3.json()}
-    except Exception as e:
-        results["photo_aliased"] = {"error": str(e)}
+        results["photo_bare"] = {"error": str(e)}
     # Test 4: PAGE_ID_post_id format
     if PAGE_ID and "_" not in str(post_id):
         compound = f"{PAGE_ID}_{post_id}"

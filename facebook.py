@@ -66,7 +66,7 @@ def get_post_insights(post_id: str) -> dict:
     if not PAGE_TOKEN or not post_id:
         return _zero
 
-    # Fields for Post nodes (includes shares)
+    # Full Post fields (shares + aliased reactions)
     POST_FIELDS = (
         "likes.summary(true),comments.summary(true),shares,"
         "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
@@ -76,58 +76,47 @@ def get_post_insights(post_id: str) -> dict:
         "reactions.type(ANGRY).limit(0).summary(true).as(reactions_angry),"
         "created_time"
     )
-    # Fields for Photo nodes (no shares — Photos don't have that field)
-    PHOTO_FIELDS = (
-        "likes.summary(true),comments.summary(true),"
-        "reactions.type(LOVE).limit(0).summary(true).as(reactions_love),"
-        "reactions.type(HAHA).limit(0).summary(true).as(reactions_haha),"
-        "reactions.type(WOW).limit(0).summary(true).as(reactions_wow),"
-        "reactions.type(SAD).limit(0).summary(true).as(reactions_sad),"
-        "reactions.type(ANGRY).limit(0).summary(true).as(reactions_angry),"
-        "created_time"
-    )
+    # Bare Photo fields (no shares, no reactions — Photos only support likes/comments)
+    PHOTO_FIELDS = "likes.summary(true),comments.summary(true),created_time"
 
     ids_to_try = [post_id]
     if "_" not in str(post_id) and PAGE_ID:
         ids_to_try.append(f"{PAGE_ID}_{post_id}")
 
     for fb_id in ids_to_try:
-        # Try Post fields first, then Photo fields as fallback
-        for fields in [POST_FIELDS, PHOTO_FIELDS]:
-            try:
+        # Try full Post fields first
+        try:
+            resp = requests.get(
+                f"{GRAPH_URL}/{fb_id}",
+                params={"access_token": PAGE_TOKEN, "fields": POST_FIELDS},
+                timeout=15,
+            )
+            if resp.status_code == 400 and "nonexisting field" in resp.text:
+                # Photo node — try bare fields
+                print(f"[FB] {fb_id} is a Photo node, retrying with basic fields")
                 resp = requests.get(
                     f"{GRAPH_URL}/{fb_id}",
-                    params={
-                        "access_token": PAGE_TOKEN,
-                        "fields": fields,
-                    },
+                    params={"access_token": PAGE_TOKEN, "fields": PHOTO_FIELDS},
                     timeout=15,
                 )
-                # Check for Photo node error before raise_for_status
-                if resp.status_code == 400 and fields == POST_FIELDS:
-                    body = resp.text
-                    if "nonexisting field" in body or "node type (Photo)" in body:
-                        print(f"[FB] {fb_id} is a Photo node, retrying without shares")
-                        continue
-                resp.raise_for_status()
-                data = resp.json()
-                result = {
-                    "likes": data.get("likes", {}).get("summary", {}).get("total_count", 0),
-                    "comments": data.get("comments", {}).get("summary", {}).get("total_count", 0),
-                    "shares": data.get("shares", {}).get("count", 0),
-                    "reactions_love": data.get("reactions_love", {}).get("summary", {}).get("total_count", 0),
-                    "reactions_haha": data.get("reactions_haha", {}).get("summary", {}).get("total_count", 0),
-                    "reactions_wow": data.get("reactions_wow", {}).get("summary", {}).get("total_count", 0),
-                    "reactions_sad": data.get("reactions_sad", {}).get("summary", {}).get("total_count", 0),
-                    "reactions_angry": data.get("reactions_angry", {}).get("summary", {}).get("total_count", 0),
-                    "created_time": data.get("created_time", ""),
-                }
-                if result["likes"] or result["comments"] or result["shares"]:
-                    return result
-                break  # Query succeeded but no engagement — skip Photo retry
-            except Exception as e:
-                print(f"[FB] Post insights error ({fb_id}): {e}")
-                break  # Other error — skip Photo retry, try next ID
+            resp.raise_for_status()
+            data = resp.json()
+            result = {
+                "likes": data.get("likes", {}).get("summary", {}).get("total_count", 0),
+                "comments": data.get("comments", {}).get("summary", {}).get("total_count", 0),
+                "shares": data.get("shares", {}).get("count", 0),
+                "reactions_love": data.get("reactions_love", {}).get("summary", {}).get("total_count", 0),
+                "reactions_haha": data.get("reactions_haha", {}).get("summary", {}).get("total_count", 0),
+                "reactions_wow": data.get("reactions_wow", {}).get("summary", {}).get("total_count", 0),
+                "reactions_sad": data.get("reactions_sad", {}).get("summary", {}).get("total_count", 0),
+                "reactions_angry": data.get("reactions_angry", {}).get("summary", {}).get("total_count", 0),
+                "created_time": data.get("created_time", ""),
+            }
+            if result["likes"] or result["comments"] or result["shares"]:
+                print(f"[FB] Got engagement for {fb_id}: L={result['likes']} C={result['comments']}")
+                return result
+        except Exception as e:
+            print(f"[FB] Post insights error ({fb_id}): {e}")
 
     return _zero
 
