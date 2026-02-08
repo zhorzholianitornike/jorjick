@@ -103,6 +103,12 @@ def get_post_insights(post_id: str) -> dict:
                     },
                     timeout=15,
                 )
+                # Check for Photo node error before raise_for_status
+                if resp.status_code == 400 and fields == POST_FIELDS:
+                    body = resp.text
+                    if "nonexisting field" in body or "node type (Photo)" in body:
+                        print(f"[FB] {fb_id} is a Photo node, retrying without shares")
+                        continue
                 resp.raise_for_status()
                 data = resp.json()
                 result = {
@@ -120,11 +126,6 @@ def get_post_insights(post_id: str) -> dict:
                     return result
                 break  # Query succeeded but no engagement — skip Photo retry
             except Exception as e:
-                err_msg = str(e)
-                if "nonexisting field" in err_msg and fields == POST_FIELDS:
-                    # Post fields failed (probably a Photo node) — retry with Photo fields
-                    print(f"[FB] {fb_id} is a Photo node, retrying without shares")
-                    continue
                 print(f"[FB] Post insights error ({fb_id}): {e}")
                 break  # Other error — skip Photo retry, try next ID
 
